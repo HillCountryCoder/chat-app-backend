@@ -1,19 +1,16 @@
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
-import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { createLogger, httpLogger } from "./common/logger";
+import { env, environmentService } from "./services/environment.service";
 
 // Create logs directory if it doesn't exist
 const logsDir = path.join(process.cwd(), "logs");
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir);
 }
-
-// Initialize environment variables
-dotenv.config();
 
 // Create main application logger
 const logger = createLogger("main");
@@ -22,20 +19,26 @@ const logger = createLogger("main");
 const app = express();
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: env.CORS_ORIGIN,
+  credentials: true
+}));
 app.use(express.json());
 app.use(httpLogger(logger)); // Add HTTP request logging
 
+
 // Connect to MongoDB
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/chat-app")
+  .connect(env.MONGODB_URI, environmentService.getMongoDBOptions())
   .then(() => {
     logger.info("Connected to MongoDB", {
-      uri: process.env.MONGODB_URI || "mongodb://localhost:27017/chat-app",
+      uri: env.MONGODB_URI,
+      environment: env.NODE_ENV
     });
   })
   .catch((err) => {
     logger.error("MongoDB connection error", { error: err.message });
+    process.exit(1);
   });
 
 // Define routes
@@ -43,10 +46,18 @@ app.get("/", (req, res) => {
   res.send("Chat Application is running!!");
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "up",
+    environment: env.NODE_ENV,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Start server
-const PORT = process.env.PORT || 5000;
+const PORT = env.PORT;
 app.listen(PORT, () => {
-  logger.info(`Server started successfully`, { port: PORT });
+  logger.info(`Server started successfully in ${env.NODE_ENV} mode`, { port: PORT });
   logger.info(`Server is running at http://localhost:${PORT}`);
 });
 
@@ -65,4 +76,17 @@ process.on("unhandledRejection", (reason, promise) => {
     reason: reason instanceof Error ? reason.message : reason,
     stack: reason instanceof Error ? reason.stack : undefined,
   });
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM received, shutting down gracefully");
+  mongoose.connection.close();
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  logger.info("SIGINT received, shutting down gracefully");
+  mongoose.connection.close();
+  process.exit(0);
 });
