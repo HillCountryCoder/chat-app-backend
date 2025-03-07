@@ -45,7 +45,6 @@ class EnvironmentService {
   private config: EnvSchema;
 
   private constructor() {
-    console.log(process.cwd());
     dotenv.config({ path: path.resolve(process.cwd(), ".env") });
     try {
       this.config = envSchema.parse(process.env);
