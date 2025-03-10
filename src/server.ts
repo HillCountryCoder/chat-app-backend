@@ -5,6 +5,8 @@ import fs from "fs";
 import path from "path";
 import { createLogger, httpLogger } from "./common/logger";
 import { env, environmentService } from "./services/environment.service";
+import { NotFoundError } from "./common/errors";
+import { errorMiddleware } from "./common/middlewares/error.middleware";
 
 // Create logs directory if it doesn't exist
 const logsDir = path.join(process.cwd(), "logs");
@@ -53,6 +55,14 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+app.use((req, res, next) => {
+	next(new NotFoundError('route'));
+})
+
+
+app.use(errorMiddleware);
+
 
 // Start server
 const PORT = env.PORT;

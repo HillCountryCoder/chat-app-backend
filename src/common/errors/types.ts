@@ -12,7 +12,7 @@ export interface ErrorDetails {
 export interface RequestContext {
   method: string;
   path: string;
-  ip: string;
+  ip?: string;
   userAgent?: string;
   userId?: string;
   socketId?: string;

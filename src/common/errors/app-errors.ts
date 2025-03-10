@@ -120,3 +120,4 @@ export class RedisError extends BaseError {
     Object.setPrototypeOf(this, RedisError.prototype);
   }
 }
+
