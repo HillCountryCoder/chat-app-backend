@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import path from "path";
 import { z } from "zod";
-import { createLogger } from "../common/logger";
+import { createLogger } from "./logger";
 
 const logger = createLogger("environment");
 

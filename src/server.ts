@@ -4,7 +4,7 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { createLogger, httpLogger } from "./common/logger";
-import { env, environmentService } from "./services/environment.service";
+import { env, environmentService } from "./common/environment";
 import { NotFoundError } from "./common/errors";
 import { errorMiddleware } from "./common/middlewares/error.middleware";
 

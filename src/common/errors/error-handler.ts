@@ -2,7 +2,7 @@ import { InternalServerError } from "./app-errors";
 import { Response } from "express";
 import winston from "winston";
 import { BaseError } from "./base-error";
-import { env } from "../../services/environment.service";
+import { env } from "../environment";
 export class ErrorHandler {
   constructor(private readonly logger: winston.Logger) {}
 
