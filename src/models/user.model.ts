@@ -96,4 +96,4 @@ userSchema.pre("save", async function hashPassword(next) {
   }
 });
 
-export const UserModel = mongoose.model<User>("User", userSchema);
+export const User = mongoose.model<User>("User", userSchema);

@@ -14,7 +14,9 @@
     "dev:setup": "npm install && docker-compose up -d && npm run dev",
     "db:up:open": "npm run db:up && npm run open:mongo-express",
     "dev:setup:open": "npm install && npm run db:up:open && npm run dev",
-    "logs:clear": "node scripts/clear-logs.mjs"
+    "logs:clear": "node scripts/clear-logs.mjs",
+  	"db:seed": "ts-node src/scripts/seed-database.ts"
+
   },
   "keywords": [
     "chat",
