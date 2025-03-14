@@ -7,42 +7,30 @@ import { createLogger, httpLogger } from "./common/logger";
 import { env, environmentService } from "./common/environment";
 import { NotFoundError } from "./common/errors";
 import { errorMiddleware } from "./common/middlewares/error.middleware";
+import { initializeDatabase } from "./common/database/init";
 
-// Create logs directory if it doesn't exist
 const logsDir = path.join(process.cwd(), "logs");
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir);
 }
 
-// Create main application logger
 const logger = createLogger("main");
 
-// Initialize Express app
 const app = express();
 
 // Middlewares
-app.use(cors({
-  origin: env.CORS_ORIGIN,
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: env.CORS_ORIGIN,
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(httpLogger(logger)); // Add HTTP request logging
-
-
-// Connect to MongoDB
-mongoose
-  .connect(env.MONGODB_URI, environmentService.getMongoDBOptions())
-  .then(() => {
-    logger.info("Connected to MongoDB", {
-      uri: env.MONGODB_URI,
-      environment: env.NODE_ENV
-    });
-  })
-  .catch((err) => {
-    logger.error("MongoDB connection error", { error: err.message });
-    process.exit(1);
-  });
-
+app.use(
+  "/favicon.ico",
+  express.static(path.join(__dirname, "../public/favicon.ico")),
+);
 // Define routes
 app.get("/", (req, res) => {
   res.send("Chat Application is running!!");
@@ -52,25 +40,34 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     status: "up",
     environment: env.NODE_ENV,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
-
 app.use((req, res, next) => {
-	next(new NotFoundError('route'));
-})
-
+  next(new NotFoundError("route"));
+});
 
 app.use(errorMiddleware);
 
-
 // Start server
 const PORT = env.PORT;
-app.listen(PORT, () => {
-  logger.info(`Server started successfully in ${env.NODE_ENV} mode`, { port: PORT });
-  logger.info(`Server is running at http://localhost:${PORT}`);
-});
+async function startApplication() {
+  try {
+    await initializeDatabase();
 
+    app.listen(PORT, () => {
+      logger.info(`Server started successfully in ${env.NODE_ENV} mode`, {
+        port: PORT,
+      });
+      logger.info(`Server is running at http://localhost:${PORT}`);
+    });
+  } catch (error: any) {
+    logger.error("Failed to start application", { error: error.message });
+    process.exit(1);
+  }
+}
+
+startApplication();
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   logger.error("Uncaught Exception", {
