@@ -66,7 +66,6 @@ const messageSchema = new Schema<Message>(
     messageId: {
       type: String,
       required: true,
-      unique: true,
     },
     senderId: {
       type: Schema.Types.ObjectId,
