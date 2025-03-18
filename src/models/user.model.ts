@@ -15,7 +15,7 @@ export interface UserSettings {
   soundEnabled: boolean;
 }
 
-export interface User extends Document {
+export interface UserInterface extends Document {
   email: string;
   username: string;
   passwordHash: string;
@@ -38,7 +38,7 @@ const userSettingsSchema = new Schema<UserSettings>(
   { _id: false },
 );
 
-const userSchema = new Schema<User>(
+const userSchema = new Schema<UserInterface>(
   {
     email: {
       type: String,
@@ -96,4 +96,4 @@ userSchema.pre("save", async function hashPassword(next) {
   }
 });
 
-export const User = mongoose.model<User>("User", userSchema);
+export const User = mongoose.model<UserInterface>("User", userSchema);
