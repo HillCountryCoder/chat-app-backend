@@ -8,7 +8,7 @@ import { env, environmentService } from "./common/environment";
 import { NotFoundError } from "./common/errors";
 import { errorMiddleware } from "./common/middlewares/error.middleware";
 import { initializeDatabase } from "./common/database/init";
-
+import routes from './routes';
 const logsDir = path.join(process.cwd(), "logs");
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir);
@@ -43,6 +43,9 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+app.get('/api', routes);
+
 app.use((req, res, next) => {
   next(new NotFoundError("route"));
 });
