@@ -1,5 +1,5 @@
 import { Request } from "express";
-import { User } from "./user.types";
+import { UserInterface as User } from "../../models";
 
 export interface AuthenticatedRequest extends Request {
   user?: User;
