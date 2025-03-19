@@ -55,7 +55,7 @@ const userSchema = new Schema<UserInterface>(
     },
     passwordHash: { type: String, required: true },
     displayName: { type: String, required: true },
-    avatarUrl: String,
+    avatarUrl: { type: String, default: "https://github.com/shadcn.png" },
     createdAt: { type: Date, default: Date.now },
     lastSeen: { type: Date, default: Date.now },
     settings: { type: userSettingsSchema, default: () => ({}) },

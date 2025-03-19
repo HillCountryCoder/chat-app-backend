@@ -44,7 +44,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get('/api', routes);
+app.use('/api', routes);
 
 app.use((req, res, next) => {
   next(new NotFoundError("route"));
