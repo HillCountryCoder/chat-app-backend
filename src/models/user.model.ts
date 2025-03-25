@@ -81,8 +81,8 @@ const userSchema = new Schema<UserInterface>(
   },
 );
 
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
+userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ username: 1 }, { unique: true });
 
 userSchema.pre("save", async function hashPassword(next) {
   if (!this.isModified("passwordHash")) return next();
