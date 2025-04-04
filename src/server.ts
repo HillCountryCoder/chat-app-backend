@@ -1,4 +1,6 @@
+// src/server.ts
 import express from "express";
+import http from "http";
 import mongoose from "mongoose";
 import cors from "cors";
 import fs from "fs";
@@ -8,7 +10,9 @@ import { env, environmentService } from "./common/environment";
 import { NotFoundError } from "./common/errors";
 import { errorMiddleware } from "./common/middlewares/error.middleware";
 import { initializeDatabase } from "./common/database/init";
-import routes from './routes';
+import routes from "./routes";
+import { initializeSocketServer } from "./socket";
+
 const logsDir = path.join(process.cwd(), "logs");
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir);
@@ -17,6 +21,11 @@ if (!fs.existsSync(logsDir)) {
 const logger = createLogger("main");
 
 const app = express();
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize Socket.IO with the HTTP server - IMPORTANT: Do this before defining Express routes
+const io = initializeSocketServer(server);
 
 // Middlewares
 app.use(
@@ -31,6 +40,7 @@ app.use(
   "/favicon.ico",
   express.static(path.join(__dirname, "../public/favicon.ico")),
 );
+
 // Define routes
 app.get("/", (req, res) => {
   res.send("Chat Application is running!!");
@@ -44,9 +54,14 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.use('/api', routes);
+app.use("/api", routes);
 
+// IMPORTANT: This 404 handler should only run for non-socket.io routes
 app.use((req, res, next) => {
+  // Skip handling socket.io routes
+  if (req.url.startsWith("/socket.io/")) {
+    return next();
+  }
   next(new NotFoundError("route"));
 });
 
@@ -58,7 +73,7 @@ async function startApplication() {
   try {
     await initializeDatabase();
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       logger.info(`Server started successfully in ${env.NODE_ENV} mode`, {
         port: PORT,
       });
