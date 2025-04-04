@@ -19,7 +19,7 @@ export interface Reaction {
   users: mongoose.Types.ObjectId[];
 }
 
-export interface Message extends Document {
+export interface MessageInterface extends Document {
   messageId: string;
   senderId: mongoose.Types.ObjectId;
   channelId?: mongoose.Types.ObjectId;
@@ -61,7 +61,7 @@ const reactionSchema = new Schema<Reaction>(
   { _id: false },
 );
 
-const messageSchema = new Schema<Message>(
+const messageSchema = new Schema<MessageInterface>(
   {
     messageId: {
       type: String,
@@ -126,4 +126,7 @@ messageSchema.index({ directMessageId: 1, createdAt: -1 });
 messageSchema.index({ "mentions.userId": 1 });
 messageSchema.index({ isPinned: 1 });
 
-export const Message = mongoose.model<Message>("Message", messageSchema);
+export const Message = mongoose.model<MessageInterface>(
+  "Message",
+  messageSchema,
+);

@@ -1,12 +1,12 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-export interface DirectMessage extends Document {
+export interface DirectMessageInterface extends Document {
   participantIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   lastActivity: Date;
 }
 
-const directMessageSchema = new Schema<DirectMessage>(
+const directMessageSchema = new Schema<DirectMessageInterface>(
   {
     participantIds: [
       {
@@ -28,12 +28,14 @@ directMessageSchema.index({ lastActivity: -1 }); // arragne in descending order
 
 directMessageSchema.pre("save", function (next) {
   if (this.isModified("participantIds")) {
-    this.participantIds.sort((a, b) => a.toString().localeCompare(b.toString()));
+    this.participantIds.sort((a, b) =>
+      a.toString().localeCompare(b.toString()),
+    );
   }
   next();
 });
 
-export const DirectMessage = mongoose.model<DirectMessage>(
+export const DirectMessage = mongoose.model<DirectMessageInterface>(
   "DirectMessage",
   directMessageSchema,
 );
