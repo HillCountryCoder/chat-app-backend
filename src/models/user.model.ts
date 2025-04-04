@@ -16,6 +16,7 @@ export interface UserSettings {
 }
 
 export interface UserInterface extends Document {
+  _id: mongoose.Types.ObjectId;
   email: string;
   username: string;
   passwordHash: string;
