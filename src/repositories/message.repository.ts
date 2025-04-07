@@ -44,9 +44,22 @@ export class MessageRepository extends BaseRepository<
       findQuery = findQuery.limit(options.limit);
     }
 
-    return findQuery.populate({
-      path: "senderId",
-      select: "_id username displayName avatarUrl",
+    return (
+      await findQuery
+        .populate({
+          path: "senderId",
+          select: "_id username displayName avatarUrl",
+          model: "User",
+        })
+        .lean()
+    ).map((message) => {
+      // Create a sender field with the populated data and restore senderId to just the ID
+      const result = {
+        ...message,
+        sender: message.senderId,
+        senderId: message.senderId._id,
+      };
+      return result;
     });
   }
   async createMessage(message: {
