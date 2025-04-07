@@ -18,7 +18,7 @@ export class DirectMessageRepository extends BaseRepository<DirectMessageInterfa
   async findByParticipants(
     userId1: string,
     userId2: string,
-  ): Promise<typeof DirectMessage.prototype | null> {
+  ): Promise<DirectMessageInterface | null> {
     const sortedParticipantIds = [userId1, userId2].sort();
 
     return this.findOne({
@@ -27,9 +27,7 @@ export class DirectMessageRepository extends BaseRepository<DirectMessageInterfa
     });
   }
 
-  async findAllByUserId(
-    userId: string,
-  ): Promise<(typeof DirectMessage.prototype)[]> {
+  async findAllByUserId(userId: string): Promise<DirectMessageInterface[]> {
     return this.find({
       participantIds: userId,
     });
