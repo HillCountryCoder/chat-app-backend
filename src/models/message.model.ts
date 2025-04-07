@@ -20,6 +20,7 @@ export interface Reaction {
 }
 
 export interface MessageInterface extends Document {
+  _id: mongoose.Types.ObjectId;
   messageId: string;
   senderId: mongoose.Types.ObjectId;
   channelId?: mongoose.Types.ObjectId;
