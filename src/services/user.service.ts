@@ -15,7 +15,13 @@ export interface AuthResponse {
   user: Partial<User>;
   token: string;
 }
-
+export interface UserListResponse {
+  users: Partial<User>[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
 const logger = createLogger("user-service");
 
 export class UserService {
@@ -131,6 +137,41 @@ export class UserService {
       throw new NotFoundError("user");
     }
     return user;
+  }
+
+  public async getAllUsers(
+    options: {
+      search?: string;
+      page?: number;
+      limit?: number;
+      currentUserId?: string;
+    } = {},
+  ): Promise<UserListResponse> {
+    const { search, page = 1, limit = 20, currentUserId } = options;
+
+    const skip = (page - 1) * limit;
+    // Get users and total count in parallel
+    const [users, total] = await Promise.all([
+      userRepository.findAllUsers({
+        search,
+        limit,
+        skip,
+        excludeId: currentUserId,
+      }),
+      userRepository.countUsers({
+        search,
+        excludeId: currentUserId,
+      }),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      users,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 }
 
