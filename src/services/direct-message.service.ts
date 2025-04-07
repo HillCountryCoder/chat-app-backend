@@ -79,7 +79,24 @@ export class DirectMessageService {
   }
 
   async getUserDirectMessages(userId: string) {
-    return directMessageRepository.findAllByUserId(userId);
+	const directMessages = await directMessageRepository.findAllByUserId(userId);
+	
+	// For each DM, get the most recent message
+	const directMessagesWithLastMessage = await Promise.all(
+	  directMessages.map(async (dm) => {
+		const messages = await messageRepository.findByDirectMessageId(
+		  dm._id.toString(),
+		  { limit: 1 }
+		);
+		
+		return {
+		  ...dm.toObject(),
+		  lastMessage: messages.length > 0 ? messages[0] : null
+		};
+	  })
+	);
+	
+	return directMessagesWithLastMessage;
   }
 
   async getMessages(
@@ -147,6 +164,8 @@ export class DirectMessageService {
       directMessage,
     };
   }
+
+  
 }
 
 export const directMessageService = DirectMessageService.getInstance();
