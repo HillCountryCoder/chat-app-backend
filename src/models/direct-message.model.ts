@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface DirectMessageInterface extends Document {
+  _id: mongoose.Types.ObjectId;
   participantIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   lastActivity: Date;
