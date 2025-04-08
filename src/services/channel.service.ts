@@ -1,3 +1,4 @@
+// src/services/channel.service.ts
 import { createLogger } from "../common/logger";
 import { channelRepository } from "../repositories/channel.repository";
 import { channelMemberRepository } from "../repositories/channel-member.repository";
@@ -16,6 +17,7 @@ import {
   ChannelMember,
   Message,
   ContentType,
+  MemberRole,
   ChannelInterface,
 } from "../models";
 import {
@@ -23,16 +25,17 @@ import {
   NotificationPreference,
 } from "../models/channel-member.model";
 import mongoose from "mongoose";
+import { threadRepository } from "../repositories/thread.repository";
 
 const logger = createLogger("channel-service");
 
 export interface CreateChannelDTO {
   name: string;
   description?: string;
-  spaceId: string;
   type?: ChannelType;
   memberIds: string[];
 }
+
 export interface ChannelWithMembersDTO {
   channel: ChannelInterface;
   members: ChannelMemberInterface[];
@@ -54,24 +57,27 @@ export class ChannelService {
     data: CreateChannelDTO,
     creatorId: string,
   ): Promise<ChannelWithMembersDTO> {
+    // Check if channel name already exists
     const existingChannel = await channelRepository.findOne({
-      spaceId: data.spaceId,
       name: data.name,
     });
+
     if (existingChannel) {
       throw new ConflictError(
-        `Channel with name '${data.name}' already exists in this space`,
+        `Channel with name '${data.name}' already exists`,
       );
     }
+
     // Create the channel
     const channel = await channelRepository.create({
-      spaceId: data.spaceId,
       name: data.name,
       description: data.description || "",
       type: data.type || ChannelType.TEXT,
+      creatorId: creatorId,
       isArchived: false,
       createdAt: new Date(),
     });
+
     // Add members to the channel
     const uniqueMemberIds = [...new Set([creatorId, ...data.memberIds])];
 
@@ -98,6 +104,7 @@ export class ChannelService {
       return channelMemberRepository.create({
         channelId: channel._id,
         userId: userId,
+        roles: isCreator ? [MemberRole.ADMIN] : [MemberRole.MEMBER],
         permissions: isCreator ? ["admin"] : [],
         notificationPreference: NotificationPreference.ALL,
         joinedAt: new Date(),
@@ -126,6 +133,7 @@ export class ChannelService {
     userId: string,
   ): Promise<ChannelInterface> {
     const channel = await channelRepository.findById(channelId);
+
     if (!channel) {
       throw new NotFoundError("channel");
     }
@@ -142,7 +150,8 @@ export class ChannelService {
 
     return channel;
   }
-  async getChannelsByUserId(userId: string): Promise<ChannelInterface[]> {
+
+  async getAllChannels(userId: string): Promise<ChannelInterface[]> {
     // Find all channel memberships for this user
     const memberships = await channelMemberRepository.find({ userId });
 
@@ -193,7 +202,7 @@ export class ChannelService {
     const adminMembership = await channelMemberRepository.findOne({
       channelId,
       userId: addedByUserId,
-      permissions: "admin",
+      roles: MemberRole.ADMIN,
     });
 
     if (!adminMembership) {
@@ -207,6 +216,7 @@ export class ChannelService {
     if (!newUser) {
       throw new NotFoundError("user");
     }
+
     // Check if user is already a member
     const existingMembership = await channelMemberRepository.findOne({
       channelId,
@@ -229,6 +239,7 @@ export class ChannelService {
     const newMembership = await channelMemberRepository.create({
       channelId,
       userId: newMemberId,
+      roles: [MemberRole.MEMBER],
       permissions: [],
       notificationPreference: NotificationPreference.ALL,
       joinedAt: new Date(),
@@ -245,6 +256,7 @@ export class ChannelService {
 
     return newMembership;
   }
+
   async removeMemberFromChannel(
     channelId: string,
     memberIdToRemove: string,
@@ -260,11 +272,11 @@ export class ChannelService {
     const isRemovingSelf = memberIdToRemove === removedByUserId;
 
     if (!isRemovingSelf) {
-      // Check if the user who's removing is a member with admin permissions
+      // Check if the user who's removing is a member with admin role
       const adminMembership = await channelMemberRepository.findOne({
         channelId,
         userId: removedByUserId,
-        permissions: "admin",
+        roles: MemberRole.ADMIN,
       });
 
       if (!adminMembership) {
@@ -282,6 +294,21 @@ export class ChannelService {
 
     if (!membershipToRemove) {
       throw new NotFoundError("channel membership");
+    }
+
+    // Check if user being removed is the last admin
+    if (membershipToRemove.roles.includes(MemberRole.ADMIN)) {
+      // Count admins
+      const adminCount = await channelMemberRepository.countDocuments({
+        channelId,
+        roles: MemberRole.ADMIN,
+      });
+
+      if (adminCount <= 1) {
+        throw new ForbiddenError(
+          "Cannot remove the last admin from the channel",
+        );
+      }
     }
 
     // Get user info for system message
@@ -304,6 +331,7 @@ export class ChannelService {
       contentType: ContentType.SYSTEM,
     });
   }
+
   async getMessages(
     channelId: string,
     userId: string,
@@ -319,6 +347,7 @@ export class ChannelService {
     // Get messages
     return messageRepository.findByChannelId(channelId, options);
   }
+
   async sendMessage(data: {
     senderId: string;
     channelId: string;
@@ -343,5 +372,141 @@ export class ChannelService {
       message,
     };
   }
+
+  // Thread-related methods
+  async createThread(data: {
+    channelId: string;
+    messageId: string;
+    senderId: string;
+    content: string;
+    title?: string;
+  }) {
+    // Verify channel exists and user is a member
+    await this.getChannelById(data.channelId, data.senderId);
+
+    // Find the parent message
+    const parentMessage = await messageRepository.findOne({
+      messageId: data.messageId,
+    });
+    if (!parentMessage) {
+      throw new NotFoundError("message");
+    }
+
+    // Mark the parent message as a thread starter
+    await messageRepository.update(parentMessage._id.toString(), {
+      isThreadStarter: true,
+    });
+
+    // Create the thread
+    const thread = await threadRepository.create({
+      channelId: data.channelId,
+      parentMessageId: parentMessage._id,
+      title: data.title,
+      createdAt: new Date(),
+      lastActivity: new Date(),
+      participantIds: [data.senderId],
+    });
+
+    // Create the first message in the thread
+    const threadMessageId = `${Date.now()}_${uuidv4()}`;
+    const threadMessage = await messageRepository.createMessage({
+      messageId: threadMessageId,
+      senderId: data.senderId,
+      threadId: thread._id.toString(),
+      content: data.content,
+      contentType: ContentType.TEXT,
+    });
+
+    return {
+      thread,
+      message: threadMessage,
+    };
+  }
+
+  async getThreadMessages(
+    threadId: string,
+    userId: string,
+    options?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+    },
+  ) {
+    // Find the thread
+    const thread = await threadRepository.findById(threadId);
+    if (!thread) {
+      throw new NotFoundError("thread");
+    }
+
+    // Verify user has access to the thread's channel
+    await this.getChannelById(thread.channelId.toString(), userId);
+
+    // Get messages
+    return messageRepository.findByThreadId(threadId, options);
+  }
+
+  async sendThreadMessage(data: {
+    senderId: string;
+    threadId: string;
+    content: string;
+  }) {
+    // Find the thread
+    const thread = await threadRepository.findById(data.threadId);
+    if (!thread) {
+      throw new NotFoundError("thread");
+    }
+
+    // Verify user has access to the thread's channel
+    await this.getChannelById(thread.channelId.toString(), data.senderId);
+
+    // Create a unique messageId
+    const messageId = `${Date.now()}_${uuidv4()}`;
+
+    // Create the message
+    const message = await messageRepository.createMessage({
+      messageId,
+      senderId: data.senderId,
+      threadId: data.threadId,
+      content: data.content,
+      contentType: ContentType.TEXT,
+    });
+
+    // Update thread lastActivity and add participant if not already in the list
+    const participants = new Set(
+      thread.participantIds.map((id: mongoose.Types.ObjectId) => id.toString()),
+    );
+    participants.add(data.senderId);
+
+    await threadRepository.update(data.threadId, {
+      lastActivity: new Date(),
+      participantIds: Array.from(participants),
+    });
+
+    return {
+      message,
+    };
+  }
+
+  async getThreadsByChannelId(channelId: string, userId: string) {
+    // Verify user has access to the channel
+    await this.getChannelById(channelId, userId);
+
+    // Get threads for this channel
+    return threadRepository.findByChannelId(channelId);
+  }
+
+  async getThreadById(threadId: string, userId: string) {
+    // Find the thread
+    const thread = await threadRepository.findById(threadId);
+    if (!thread) {
+      throw new NotFoundError("thread");
+    }
+
+    // Verify user has access to the thread's channel
+    await this.getChannelById(thread.channelId.toString(), userId);
+
+    return thread;
+  }
 }
+
 export const channelService = ChannelService.getInstance();

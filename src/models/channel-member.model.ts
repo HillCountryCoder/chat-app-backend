@@ -13,7 +13,7 @@ export enum MemberRole {
   MEMBER = "member",
 }
 
-export interface ChannelMember extends Document {
+export interface ChannelMemberInterface extends Document {
   channelId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   roles: MemberRole[];
@@ -22,7 +22,7 @@ export interface ChannelMember extends Document {
   notificationPreference: NotificationPreference;
 }
 
-const channelMemberSchema = new Schema<ChannelMember>(
+const channelMemberSchema = new Schema<ChannelMemberInterface>(
   {
     channelId: {
       type: Schema.Types.ObjectId,
@@ -65,7 +65,7 @@ channelMemberSchema.index({ channelId: 1, userId: 1 }, { unique: true });
 channelMemberSchema.index({ channelId: 1 });
 channelMemberSchema.index({ userId: 1 });
 
-export const ChannelMember = mongoose.model<ChannelMember>(
+export const ChannelMember = mongoose.model<ChannelMemberInterface>(
   "ChannelMember",
   channelMemberSchema,
 );
