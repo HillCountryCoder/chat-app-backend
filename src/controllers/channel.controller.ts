@@ -1,3 +1,4 @@
+// src/controllers/channel.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../common/types/auth.type";
 import { channelService } from "../services/channel.service";
@@ -7,10 +8,11 @@ import { ValidationError, UnauthorizedError } from "../common/errors";
 import { ChannelType } from "../models";
 
 const logger = createLogger("channel-controller");
+
+// Validation schemas
 const createChannelSchema = z.object({
   name: z.string().min(2).max(50),
   description: z.string().max(500).optional(),
-  spaceId: z.string(),
   type: z
     .enum([ChannelType.TEXT, ChannelType.VOICE, ChannelType.ANNOUNCEMENT])
     .optional(),
@@ -31,6 +33,12 @@ const sendMessageSchema = z.object({
   content: z.string().min(1).max(2000),
 });
 
+const createThreadSchema = z.object({
+  messageId: z.string(),
+  content: z.string().min(1).max(2000),
+  title: z.string().max(100).optional(),
+});
+
 export class ChannelController {
   static async createChannel(
     req: AuthenticatedRequest,
@@ -43,6 +51,7 @@ export class ChannelController {
       if (!req.user) {
         throw new UnauthorizedError("User not authenticated");
       }
+
       // Validate request body
       let validatedData;
       try {
@@ -80,12 +89,13 @@ export class ChannelController {
 
       const userId = req.user._id.toString();
 
-      const channels = await channelService.getChannelsByUserId(userId);
+      const channels = await channelService.getAllChannels(userId);
       res.json(channels);
     } catch (error) {
       next(error);
     }
   }
+
   static async getChannelById(
     req: AuthenticatedRequest,
     res: Response,
@@ -107,6 +117,7 @@ export class ChannelController {
       next(error);
     }
   }
+
   static async getChannelMembers(
     req: AuthenticatedRequest,
     res: Response,
@@ -128,6 +139,7 @@ export class ChannelController {
       next(error);
     }
   }
+
   static async addMember(
     req: AuthenticatedRequest,
     res: Response,
@@ -166,6 +178,7 @@ export class ChannelController {
       next(error);
     }
   }
+
   static async removeMember(
     req: AuthenticatedRequest,
     res: Response,
@@ -258,6 +271,176 @@ export class ChannelController {
       const result = await channelService.sendMessage({
         senderId: userId,
         channelId: id,
+        content: validatedData.content,
+      });
+
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Thread related endpoints
+  static async createThread(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id } = req.params; // Channel ID
+      logger.debug(`Creating thread in channel ID: ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      // Validate request body
+      let validatedData;
+      try {
+        validatedData = createThreadSchema.parse(req.body);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          throw new ValidationError(
+            error.errors.map((e) => e.message).join(", "),
+          );
+        }
+        throw error;
+      }
+
+      const userId = req.user._id.toString();
+
+      const result = await channelService.createThread({
+        channelId: id,
+        messageId: validatedData.messageId,
+        senderId: userId,
+        content: validatedData.content,
+        title: validatedData.title,
+      });
+
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getThreads(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id } = req.params; // Channel ID
+      logger.debug(`Getting threads for channel ID: ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      const userId = req.user._id.toString();
+
+      const threads = await channelService.getThreadsByChannelId(id, userId);
+      res.json(threads);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getThreadById(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id, threadId } = req.params;
+      logger.debug(`Getting thread ID: ${threadId} in channel ID: ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      const userId = req.user._id.toString();
+
+      const thread = await channelService.getThreadById(threadId, userId);
+      res.json(thread);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getThreadMessages(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id, threadId } = req.params;
+      logger.debug(
+        `Getting messages for thread ID: ${threadId} in channel ID: ${id}`,
+      );
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      // Validate query parameters
+      let validatedQuery;
+      try {
+        validatedQuery = getMessagesSchema.parse(req.query);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          throw new ValidationError(
+            error.errors.map((e) => e.message).join(", "),
+          );
+        }
+        throw error;
+      }
+
+      const userId = req.user._id.toString();
+
+      const messages = await channelService.getThreadMessages(
+        threadId,
+        userId,
+        validatedQuery,
+      );
+      res.json(messages);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async sendThreadMessage(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id, threadId } = req.params;
+      logger.debug(
+        `Sending message to thread ID: ${threadId} in channel ID: ${id}`,
+      );
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      // Validate request body
+      let validatedData;
+      try {
+        validatedData = sendMessageSchema.parse(req.body);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          throw new ValidationError(
+            error.errors.map((e) => e.message).join(", "),
+          );
+        }
+        throw error;
+      }
+
+      const userId = req.user._id.toString();
+
+      const result = await channelService.sendThreadMessage({
+        senderId: userId,
+        threadId: threadId,
         content: validatedData.content,
       });
 
