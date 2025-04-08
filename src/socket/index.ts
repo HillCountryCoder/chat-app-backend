@@ -1,15 +1,14 @@
-// src/socket/index.ts
 import { Server } from "socket.io";
 import { createLogger, createSocketLogger } from "../common/logger";
 import { socketAuthMiddleware } from "./middleware/auth.middleware";
 import { ErrorHandler } from "../common/errors";
 import { registerDirectMessageHandlers } from "./direct-message.handler";
+import { registerChannelHandlers } from "./channel.handler";
 import { Server as HttpServer } from "http";
 
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
 const errorHandler = new ErrorHandler(logger);
-
 
 export const initializeSocketServer = (server: HttpServer) => {
   const io = new Server(server, {
@@ -41,6 +40,7 @@ export const initializeSocketServer = (server: HttpServer) => {
 
       // Register handlers
       registerDirectMessageHandlers(io, socket, userId);
+      registerChannelHandlers(io, socket, userId);
 
       // Handle disconnection
       socket.on("disconnect", (reason) => {
