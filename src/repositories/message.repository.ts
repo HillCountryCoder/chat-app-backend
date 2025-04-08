@@ -25,7 +25,7 @@ export class MessageRepository extends BaseRepository<
       before?: string;
       after?: string;
     },
-  ): Promise<MessageInterface[]> {
+  ): Promise<(typeof Message.prototype)[]> {
     const query: any = {
       directMessageId: new Types.ObjectId(directMessageId),
     };
@@ -44,30 +44,12 @@ export class MessageRepository extends BaseRepository<
       findQuery = findQuery.limit(options.limit);
     }
 
-    return (
-      await findQuery
-        .populate({
-          path: "senderId",
-          select: "_id username displayName avatarUrl",
-          model: "User",
-        })
-        .lean()
-    ).map((message: any) => {
-      // Create a sender field with the populated data and restore senderId to just the ID
-      const result: MessageInterface = {
-        ...message,
-        sender: message.senderId,
-        senderId: message.senderId._id,
-        messageId: message._id.toString(),
-        content: message.content,
-        contentType: message.contentType,
-        mentions: message.mentions || [],
-        createdAt: message.createdAt,
-        updatedAt: message.updatedAt,
-      };
-      return result;
+    return findQuery.populate({
+      path: "senderId",
+      select: "_id username displayName avatarUrl",
     });
   }
+
   async findByChannelId(
     channelId: string,
     options?: {
@@ -75,9 +57,10 @@ export class MessageRepository extends BaseRepository<
       before?: string;
       after?: string;
     },
-  ): Promise<MessageInterface[]> {
+  ): Promise<(typeof Message.prototype)[]> {
     const query: any = {
       channelId: new Types.ObjectId(channelId),
+      threadId: { $exists: false }, // Exclude messages that are part of threads
     };
 
     if (options?.before) {
@@ -94,37 +77,86 @@ export class MessageRepository extends BaseRepository<
       findQuery = findQuery.limit(options.limit);
     }
 
-    return (
-      await findQuery
-        .populate({
-          path: "senderId",
-          select: "_id username displayName avatarUrl",
-          model: "User",
-        })
-        .lean()
-    ).map((message: any) => {
-      // Create a sender field with the populated data and restore senderId to just the ID
-      const result: MessageInterface = {
-        ...message,
-        sender: message.senderId,
-        senderId: message.senderId._id,
-        messageId: message._id.toString(),
-        content: message.content,
-        contentType: message.contentType,
-        mentions: message.mentions || [],
-        createdAt: message.createdAt,
-        updatedAt: message.updatedAt,
-      };
-      return result;
+    return findQuery.populate({
+      path: "senderId",
+      select: "_id username displayName avatarUrl",
     });
   }
+
+  async findByThreadId(
+    threadId: string,
+    options?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+    },
+  ): Promise<(typeof Message.prototype)[]> {
+    const query: any = {
+      threadId: new Types.ObjectId(threadId),
+    };
+
+    if (options?.before) {
+      query.createdAt = { $lt: new Date(options.before) };
+    }
+
+    if (options?.after) {
+      query.createdAt = { ...query.createdAt, $gt: new Date(options.after) };
+    }
+
+    let findQuery = this.model.find(query).sort({ createdAt: -1 });
+
+    if (options?.limit) {
+      findQuery = findQuery.limit(options.limit);
+    }
+
+    return findQuery.populate({
+      path: "senderId",
+      select: "_id username displayName avatarUrl",
+    });
+  }
+
+  async findThreadStarters(
+    channelId: string,
+    options?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+    },
+  ): Promise<(typeof Message.prototype)[]> {
+    const query: any = {
+      channelId: new Types.ObjectId(channelId),
+      isThreadStarter: true,
+    };
+
+    if (options?.before) {
+      query.createdAt = { $lt: new Date(options.before) };
+    }
+
+    if (options?.after) {
+      query.createdAt = { ...query.createdAt, $gt: new Date(options.after) };
+    }
+
+    let findQuery = this.model.find(query).sort({ createdAt: -1 });
+
+    if (options?.limit) {
+      findQuery = findQuery.limit(options.limit);
+    }
+
+    return findQuery.populate({
+      path: "senderId",
+      select: "_id username displayName avatarUrl",
+    });
+  }
+
   async createMessage(message: {
     messageId: string;
     senderId: string;
     directMessageId?: string;
     channelId?: string;
+    threadId?: string;
     content: string;
     contentType?: string;
+    isThreadStarter?: boolean;
   }): Promise<MessageInterface> {
     return this.create(message);
   }
