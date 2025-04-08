@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { UserInterface } from "./user.model";
 
 export enum ContentType {
   TEXT = "text",
@@ -34,6 +35,7 @@ export interface MessageInterface extends Document {
   editedAt?: Date;
   isEdited: boolean;
   isPinned: boolean;
+  sender: UserInterface;
 }
 
 const mentionSchema = new Schema<Mention>(

@@ -6,7 +6,8 @@ export enum ChannelType {
   ANNOUNCEMENT = "announcement",
 }
 
-export interface Channel extends Document {
+export interface ChannelInterface extends Document {
+  _id: mongoose.Types.ObjectId;
   spaceId: mongoose.Types.ObjectId;
   name: string;
   description?: string;
@@ -15,7 +16,7 @@ export interface Channel extends Document {
   isArchived: boolean;
 }
 
-const channelSchema = new Schema<Channel>(
+const channelSchema = new Schema<ChannelInterface>(
   {
     spaceId: {
       type: Schema.Types.ObjectId,
@@ -57,4 +58,7 @@ channelSchema.index({ isArchived: 1 });
 
 channelSchema.index({ spaceId: 1, name: 1 }, { unique: true });
 
-export const Channel = mongoose.model<Channel>("Channel", channelSchema);
+export const Channel = mongoose.model<ChannelInterface>(
+  "Channel",
+  channelSchema,
+);
