@@ -6,23 +6,18 @@ export enum ChannelType {
   ANNOUNCEMENT = "announcement",
 }
 
-export interface ChannelInterface extends Document {
-  _id: mongoose.Types.ObjectId;
-  spaceId: mongoose.Types.ObjectId;
+export interface Channel extends Document {
   name: string;
   description?: string;
+  creatorId: mongoose.Types.ObjectId;
+  avatarUrl?: string;
   createdAt: Date;
   type: ChannelType;
   isArchived: boolean;
 }
 
-const channelSchema = new Schema<ChannelInterface>(
+const channelSchema = new Schema<Channel>(
   {
-    spaceId: {
-      type: Schema.Types.ObjectId,
-      ref: "Space",
-      required: true,
-    },
     name: {
       type: String,
       required: true,
@@ -35,6 +30,12 @@ const channelSchema = new Schema<ChannelInterface>(
       trim: true,
       maxLength: 500,
     },
+    creatorId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    avatarUrl: String,
     createdAt: { type: Date, default: Date.now },
     type: {
       type: String,
@@ -51,14 +52,9 @@ const channelSchema = new Schema<ChannelInterface>(
   },
 );
 
-channelSchema.index({ spaceId: 1 });
+// Index for faster lookups
+channelSchema.index({ creatorId: 1 });
 channelSchema.index({ isArchived: 1 });
+channelSchema.index({ name: 1 }, { unique: true });
 
-// compound index so that space have unique channels
-
-channelSchema.index({ spaceId: 1, name: 1 }, { unique: true });
-
-export const Channel = mongoose.model<ChannelInterface>(
-  "Channel",
-  channelSchema,
-);
+export const Channel = mongoose.model<Channel>("Channel", channelSchema);

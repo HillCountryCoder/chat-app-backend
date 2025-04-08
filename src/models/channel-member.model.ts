@@ -7,15 +7,22 @@ export enum NotificationPreference {
   NONE = "none",
 }
 
-export interface ChannelMemberInterface extends Document {
+export enum MemberRole {
+  ADMIN = "admin",
+  MODERATOR = "moderator",
+  MEMBER = "member",
+}
+
+export interface ChannelMember extends Document {
   channelId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
+  roles: MemberRole[];
   permissions: string[];
   joinedAt: Date;
   notificationPreference: NotificationPreference;
 }
 
-const channelMemberSchema = new Schema<ChannelMemberInterface>(
+const channelMemberSchema = new Schema<ChannelMember>(
   {
     channelId: {
       type: Schema.Types.ObjectId,
@@ -27,6 +34,13 @@ const channelMemberSchema = new Schema<ChannelMemberInterface>(
       ref: "User",
       required: true,
     },
+    roles: [
+      {
+        type: String,
+        enum: Object.values(MemberRole),
+        default: [MemberRole.MEMBER],
+      },
+    ],
     permissions: [
       {
         type: String,
@@ -51,7 +65,7 @@ channelMemberSchema.index({ channelId: 1, userId: 1 }, { unique: true });
 channelMemberSchema.index({ channelId: 1 });
 channelMemberSchema.index({ userId: 1 });
 
-export const ChannelMember = mongoose.model<ChannelMemberInterface>(
+export const ChannelMember = mongoose.model<ChannelMember>(
   "ChannelMember",
   channelMemberSchema,
 );
