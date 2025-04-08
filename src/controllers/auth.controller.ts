@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../common/types/auth.type";
 import { userService } from "../services/user.service";
 import {
-  LoginInput,
+  AuthInput,
   RegisterInput,
 } from "../services/validation/auth.validation";
 import { createLogger } from "../common/logger";
@@ -30,9 +30,18 @@ export class AuthController {
       logger.debug("Processing login request");
 
       // The request body is already validated by the middleware
-      const credentials = req.body as LoginInput;
+      const credentials = req.body as AuthInput;
 
-      const loggedInUser = await userService.loginUser(credentials);
+      // Determine if identifier is email or username
+      const isEmail = /^\S+@\S+\.\S+$/.test(credentials.identifier);
+
+      const loginData = {
+        email: isEmail ? credentials.identifier : undefined,
+        username: !isEmail ? credentials.identifier : undefined,
+        password: credentials.password,
+      };
+
+      const loggedInUser = await userService.loginUser(loginData);
       res.status(200).json(loggedInUser);
     } catch (error) {
       next(error);

@@ -32,14 +32,24 @@ export const loginSchema = z
     username: z.string().optional(),
     password: z.string().min(8, "Password is required"),
   })
-  .refine((data) => data.email || data.username, {
-    message: "Either email or username must be provided",
-    path: ["email", "username"],
-  });
-
+  .refine(
+    (data) => {
+      console.log("Data in bacekdn", data);
+      return data.email || data.username;
+    },
+    {
+      message: "Either email or username must be provided",
+      path: ["email", "username"],
+    },
+  );
+export const loginSchemaForMiddleware = z.object({
+  // For login, allow a general identifier that could be either email or username
+  identifier: z.string().min(1, "Email or username is required"),
+  password: z.string().min(8, "Password is required"),
+});
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-
+export type AuthInput = z.infer<typeof loginSchemaForMiddleware>;
 export class AuthValidationService {
   private static instance: AuthValidationService;
 
