@@ -7,7 +7,7 @@ export enum NotificationPreference {
   NONE = "none",
 }
 
-export interface IChannelMember extends Document {
+export interface ChannelMemberInterface extends Document {
   channelId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   permissions: string[];
@@ -15,7 +15,7 @@ export interface IChannelMember extends Document {
   notificationPreference: NotificationPreference;
 }
 
-const channelMemberSchema = new Schema<IChannelMember>(
+const channelMemberSchema = new Schema<ChannelMemberInterface>(
   {
     channelId: {
       type: Schema.Types.ObjectId,
@@ -51,7 +51,7 @@ channelMemberSchema.index({ channelId: 1, userId: 1 }, { unique: true });
 channelMemberSchema.index({ channelId: 1 });
 channelMemberSchema.index({ userId: 1 });
 
-export const ChannelMember = mongoose.model<IChannelMember>(
+export const ChannelMember = mongoose.model<ChannelMemberInterface>(
   "ChannelMember",
   channelMemberSchema,
 );
