@@ -12,6 +12,7 @@ export interface ChannelInterface extends Document {
   description?: string;
   creatorId: mongoose.Types.ObjectId;
   avatarUrl?: string;
+  lastActivity: Date;
   createdAt: Date;
   type: ChannelType;
   isArchived: boolean;
@@ -35,6 +36,10 @@ const channelSchema = new Schema<ChannelInterface>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    lastActivity: {
+      type: Date,
+      default: Date.now(),
     },
     avatarUrl: String,
     createdAt: { type: Date, default: Date.now },

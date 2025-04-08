@@ -368,6 +368,11 @@ export class ChannelService {
       contentType: ContentType.TEXT,
     });
 
+    // Update the channel's lastActivity timestamp
+    await channelRepository.update(data.channelId, {
+      lastActivity: new Date(),
+    });
+
     return {
       message,
     };
