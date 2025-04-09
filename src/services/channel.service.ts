@@ -164,10 +164,25 @@ export class ChannelService {
     const channelIds = memberships.map((membership) => membership.channelId);
 
     // Fetch the channels
-    return channelRepository.find({
+    const channels = await channelRepository.find({
       _id: { $in: channelIds },
       isArchived: false,
     });
+
+    const channelsWithLastMessage = await Promise.all(
+      channels.map(async (channel) => {
+        const messages = await messageRepository.findByChannelId(
+          channel._id.toString(),
+          { limit: 1 },
+        );
+
+        return {
+          ...channel.toObject(),
+          lastMessage: messages.length > 0 ? messages[0] : null,
+        };
+      }),
+    );
+    return channelsWithLastMessage;
   }
 
   async getChannelMembers(
