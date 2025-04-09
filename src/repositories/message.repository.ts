@@ -44,9 +44,28 @@ export class MessageRepository extends BaseRepository<
       findQuery = findQuery.limit(options.limit);
     }
 
-    return findQuery.populate({
-      path: "senderId",
-      select: "_id username displayName avatarUrl",
+    return (
+      await findQuery
+        .populate({
+          path: "senderId",
+          select: "_id username displayName avatarUrl",
+          model: "User",
+        })
+        .lean()
+    ).map((message: any) => {
+      // Create a sender field with the populated data and restore senderId to just the ID
+      const result: MessageInterface = {
+        ...message,
+        sender: message.senderId,
+        senderId: message.senderId._id,
+        messageId: message._id.toString(),
+        content: message.content,
+        contentType: message.contentType,
+        mentions: message.mentions || [],
+        createdAt: message.createdAt,
+        updatedAt: message.updatedAt,
+      };
+      return result;
     });
   }
 
@@ -77,9 +96,28 @@ export class MessageRepository extends BaseRepository<
       findQuery = findQuery.limit(options.limit);
     }
 
-    return findQuery.populate({
-      path: "senderId",
-      select: "_id username displayName avatarUrl",
+    return (
+      await findQuery
+        .populate({
+          path: "senderId",
+          select: "_id username displayName avatarUrl",
+          model: "User",
+        })
+        .lean()
+    ).map((message: any) => {
+      // Create a sender field with the populated data and restore senderId to just the ID
+      const result: MessageInterface = {
+        ...message,
+        sender: message.senderId,
+        senderId: message.senderId._id,
+        messageId: message._id.toString(),
+        content: message.content,
+        contentType: message.contentType,
+        mentions: message.mentions || [],
+        createdAt: message.createdAt,
+        updatedAt: message.updatedAt,
+      };
+      return result;
     });
   }
 
