@@ -4,8 +4,9 @@ import { messageRepository } from "../repositories/message.repository";
 import { userRepository } from "../repositories/user.repository";
 import { NotFoundError, ForbiddenError } from "../common/errors";
 import { v4 as uuidv4 } from "uuid";
-import { ContentType, DirectMessage } from "../models";
+import { ContentType, DirectMessage, DirectMessageInterface } from "../models";
 import mongoose from "mongoose";
+import { unreadMessagesService } from "./unread-messages.service";
 
 const logger = createLogger("direct-message-service");
 
@@ -55,7 +56,7 @@ export class DirectMessageService {
   async getDirectMessageById(
     directMessageId: string,
     userId: string,
-  ): Promise<typeof DirectMessage.prototype> {
+  ): Promise<DirectMessageInterface> {
     const directMessage = await directMessageRepository.findById(
       directMessageId,
     );
@@ -79,24 +80,26 @@ export class DirectMessageService {
   }
 
   async getUserDirectMessages(userId: string) {
-	const directMessages = await directMessageRepository.findAllByUserId(userId);
-	
-	// For each DM, get the most recent message
-	const directMessagesWithLastMessage = await Promise.all(
-	  directMessages.map(async (dm) => {
-		const messages = await messageRepository.findByDirectMessageId(
-		  dm._id.toString(),
-		  { limit: 1 }
-		);
-		
-		return {
-		  ...dm.toObject(),
-		  lastMessage: messages.length > 0 ? messages[0] : null
-		};
-	  })
-	);
-	
-	return directMessagesWithLastMessage;
+    const directMessages = await directMessageRepository.findAllByUserId(
+      userId,
+    );
+
+    // For each DM, get the most recent message
+    const directMessagesWithLastMessage = await Promise.all(
+      directMessages.map(async (dm) => {
+        const messages = await messageRepository.findByDirectMessageId(
+          dm._id.toString(),
+          { limit: 1 },
+        );
+
+        return {
+          ...dm.toObject(),
+          lastMessage: messages.length > 0 ? messages[0] : null,
+        };
+      }),
+    );
+
+    return directMessagesWithLastMessage;
   }
 
   async getMessages(
@@ -159,13 +162,33 @@ export class DirectMessageService {
       lastActivity: new Date(),
     });
 
+    // Increment unread count for all participants except the sender
+    await unreadMessagesService.incrementUnreadCount(
+      "dm",
+      directMessageId,
+      data.senderId,
+      directMessage.participantIds.map((id) =>
+        id instanceof mongoose.Types.ObjectId ? id.toString() : id,
+      ),
+    );
+
     return {
       message,
       directMessage,
     };
   }
 
-  
+  async markMessagesAsRead(directMessageId: string, userId: string) {
+    await this.getDirectMessageById(directMessageId, userId);
+
+    await unreadMessagesService.markAsRead(userId, "dm", directMessageId);
+
+    return { success: true };
+  }
+
+  async getUnreadCounts(userId: string) {
+    return unreadMessagesService.getAllUnreadCounts(userId);
+  }
 }
 
 export const directMessageService = DirectMessageService.getInstance();

@@ -26,6 +26,7 @@ import {
 } from "../models/channel-member.model";
 import mongoose from "mongoose";
 import { threadRepository } from "../repositories/thread.repository";
+import { unreadMessagesService } from "./unread-messages.service";
 
 const logger = createLogger("channel-service");
 
@@ -373,9 +374,39 @@ export class ChannelService {
       lastActivity: new Date(),
     });
 
+    const channelMembers = await channelMemberRepository.find({
+      channelId: data.channelId,
+    });
+    const memberIds = channelMembers.map((member) =>
+      member.userId instanceof mongoose.Types.ObjectId
+        ? member.userId.toString()
+        : member.userId,
+    );
+
+    await unreadMessagesService.incrementUnreadCount(
+      "channel",
+      data.channelId,
+      data.senderId,
+      memberIds,
+    );
+
     return {
       message,
     };
+  }
+  async markMessagesAsRead(channelId: string, userId: string) {
+    await this.getChannelById(channelId, userId);
+
+    await unreadMessagesService.markAsRead(userId, "channel", channelId);
+
+    return { success: true };
+  }
+
+  async getChannelUnreadCount(
+    channelId: string,
+    userId: string,
+  ): Promise<number> {
+    return unreadMessagesService.getUnreadCount(userId, "channel", channelId);
   }
 
   // Thread-related methods
