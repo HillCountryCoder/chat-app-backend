@@ -12,6 +12,7 @@ import { errorMiddleware } from "./common/middlewares/error.middleware";
 import { initializeDatabase } from "./common/database/init";
 import routes from "./routes";
 import { initializeSocketServer } from "./socket";
+import { connectRedis } from "./common/redis/client";
 
 const logsDir = path.join(process.cwd(), "logs");
 if (!fs.existsSync(logsDir)) {
@@ -72,6 +73,8 @@ const PORT = env.PORT;
 async function startApplication() {
   try {
     await initializeDatabase();
+
+	await connectRedis();
 
     server.listen(PORT, () => {
       logger.info(`Server started successfully in ${env.NODE_ENV} mode`, {
