@@ -5,6 +5,7 @@ import { ErrorHandler } from "../common/errors";
 import { registerDirectMessageHandlers } from "./direct-message.handler";
 import { registerChannelHandlers } from "./channel.handler";
 import { Server as HttpServer } from "http";
+import { unreadMessagesService } from "../services/unread-messages.service";
 
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
@@ -41,6 +42,21 @@ export const initializeSocketServer = (server: HttpServer) => {
       // Register handlers
       registerDirectMessageHandlers(io, socket, userId);
       registerChannelHandlers(io, socket, userId);
+
+      // Send initial unread counts
+      async function sendInitialUnreadCounts() {
+        try {
+          const unreadCounts = await unreadMessagesService.getAllUnreadCounts(
+            userId,
+          );
+          socket.emit("unread_counts_update", unreadCounts);
+        } catch (error) {
+          logger.error("Error sending initial unread counts", { error });
+        }
+      }
+
+      // Send initial unread counts after connection
+      sendInitialUnreadCounts();
 
       // Handle disconnection
       socket.on("disconnect", (reason) => {

@@ -144,29 +144,6 @@ export class DirectMessageController {
     }
   }
 
-  static async markAsRead(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction,
-  ) {
-    try {
-      const { id } = req.params;
-      logger.debug(`Marking direct message as read: ${id}`);
-
-      if (!req.user) {
-        throw new UnauthorizedError("User not authenticated");
-      }
-
-      const userId = req.user._id.toString();
-      const result = await directMessageService.markMessagesAsRead(
-        id /* directMessageId */,
-        userId,
-      );
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
   static async getUnreadCounts(
     req: AuthenticatedRequest,
     res: Response,
@@ -182,6 +159,27 @@ export class DirectMessageController {
 
       const unreadCounts = await directMessageService.getUnreadCounts(userId);
       res.json(unreadCounts);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async markAsRead(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id } = req.params;
+      logger.debug(`Marking direct message as read: ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+      const userId = req.user._id.toString();
+
+      const result = await directMessageService.markMessagesAsRead(id, userId);
+      res.json(result);
     } catch (error) {
       next(error);
     }
