@@ -449,4 +449,25 @@ export class ChannelController {
       next(error);
     }
   }
+
+  static async markAsRead(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id } = req.params;
+      logger.debug(`Marking channel messages as read: ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+      const userId = req.user._id.toString();
+
+      const result = await channelService.markMessagesAsRead(id, userId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

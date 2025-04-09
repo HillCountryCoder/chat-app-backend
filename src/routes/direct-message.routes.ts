@@ -20,4 +20,7 @@ router.get('/:id/messages', DirectMessageController.getMessages);
 // Send a new message
 router.post('/messages', DirectMessageController.sendMessage);
 
+router.post('/:id/read', DirectMessageController.markAsRead);
+
+router.get('/unread', DirectMessageController.getUnreadCounts);
 export default router;
