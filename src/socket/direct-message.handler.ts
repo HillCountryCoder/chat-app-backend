@@ -72,6 +72,25 @@ export const registerDirectMessageHandlers = (
           message: result.message,
           directMessage: result.directMessage,
         });
+
+        // Send unread count update to recipient
+        if (recipientId) {
+          const recipientIdStr =
+            recipientId instanceof mongoose.Types.ObjectId
+              ? recipientId.toString()
+              : recipientId;
+
+          // Get unread counts for the recipient
+          const unreadCounts = await directMessageService.getUnreadCounts(
+            recipientIdStr,
+          );
+
+          // Emit the unread counts to the recipient
+          io.to(`user:${recipientIdStr}`).emit(
+            "unread_counts_update",
+            unreadCounts,
+          );
+        }
       }
 
       // Send confirmation to sender
@@ -91,6 +110,37 @@ export const registerDirectMessageHandlers = (
           callback({
             success: false,
             error: error.message || "Failed to send message",
+          });
+        }
+      }
+    }
+  });
+
+  socket.on("mark_dm_read", async (data, callback) => {
+    try {
+      const { directMessageId } = data;
+
+      // Mark messages as read
+      await directMessageService.markMessagesAsRead(directMessageId, userId);
+
+      // Get updated unread counts
+      const unreadCounts = await directMessageService.getUnreadCounts(userId);
+
+      // Send back to the client
+      socket.emit("unread_counts_update", unreadCounts);
+
+      if (typeof callback === "function") {
+        callback({ success: true });
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(socket.id, error);
+
+        if (typeof callback === "function") {
+          errorHandler.handleSocketError(error, socket);
+          callback({
+            success: false,
+            error: error.message || "Failed to mark messages as read",
           });
         }
       }
