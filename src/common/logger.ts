@@ -31,8 +31,6 @@ const consoleFormat = winston.format.combine(
   winston.format.printf(
     (info) =>
       `${info.timestamp} ${info.level}: ${info.message}${
-        info.splat !== undefined ? `${info.splat}` : ""
-      } ${
         info.metadata && Object.keys(info.metadata).length
           ? `\n${JSON.stringify(info.metadata, null, 2)}`
           : ""
@@ -55,6 +53,23 @@ const createLogger = (serviceName: string) => {
   return winston.createLogger({
     level: logLevel(),
     levels: logLevels,
+    format: winston.format.combine(
+      createServiceFormat(serviceName),
+      winston.format((info) => {
+        // If info has additional properties besides the standard ones,
+        // move them to metadata
+        const additionalProps = { ...info };
+        delete (additionalProps as { [key: string]: any }).level;
+        delete additionalProps.message;
+        delete additionalProps.timestamp;
+        delete additionalProps.service;
+
+        if (Object.keys(additionalProps).length) {
+          info.metadata = additionalProps;
+        }
+        return info;
+      })(),
+    ),
     transports: [
       new winston.transports.Console({
         format: winston.format.combine(
