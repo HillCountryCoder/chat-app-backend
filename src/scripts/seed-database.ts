@@ -1,15 +1,7 @@
 // src/scripts/seed-database.ts
 import { initializeDatabase } from "../common/database/init";
 import { databaseConnection } from "../common/database/connection";
-import {
-  User,
-  UserStatus,
-  Space,
-  SpaceVisibility,
-  SpaceType,
-  Channel,
-  ChannelType,
-} from "../models";
+import { User, UserStatus } from "../models";
 import { createLogger } from "../common/logger";
 import bcrypt from "bcrypt";
 
@@ -52,54 +44,6 @@ async function seedUsers() {
   logger.info(`Seeded ${users.length} users`);
 }
 
-async function seedSpacesAndChannels() {
-  const existingSpaces = await Space.countDocuments();
-  if (existingSpaces > 0) {
-    logger.info("Spaces already exist, skipping space/channel seed");
-    return;
-  }
-
-  const admin = await User.findOne({ username: "admin" });
-  if (!admin) {
-    logger.error("Admin user not found, cannot seed spaces");
-    return;
-  }
-
-  // Create a general space
-  const generalSpace = await Space.create({
-    name: "General",
-    description: "General discussion space",
-    creatorId: admin._id,
-    visibility: SpaceVisibility.PUBLIC,
-    type: SpaceType.TEAM,
-  });
-
-  // Create default channels
-  const channels = [
-    {
-      spaceId: generalSpace._id,
-      name: "general",
-      description: "General discussions",
-      type: ChannelType.TEXT,
-    },
-    {
-      spaceId: generalSpace._id,
-      name: "random",
-      description: "Random topics",
-      type: ChannelType.TEXT,
-    },
-    {
-      spaceId: generalSpace._id,
-      name: "announcements",
-      description: "Important announcements",
-      type: ChannelType.ANNOUNCEMENT,
-    },
-  ];
-
-  await Channel.insertMany(channels);
-  logger.info(`Seeded 1 space and ${channels.length} channels`);
-}
-
 async function seedDatabase() {
   try {
     await initializeDatabase();
@@ -107,7 +51,6 @@ async function seedDatabase() {
     logger.info("Starting database seed");
 
     await seedUsers();
-    await seedSpacesAndChannels();
 
     logger.info("Database seed completed successfully");
   } catch (error: any) {

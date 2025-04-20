@@ -1,10 +1,6 @@
-import mongoose from "mongoose";
 import {
   User,
   UserStatus,
-  Space,
-  SpaceVisibility,
-  SpaceType,
   Channel,
   ChannelType,
 } from "../../../models";
@@ -34,20 +30,7 @@ export const userFixtures = {
   },
 };
 
-export const spaceFixtures = {
-  team: {
-    name: "Team Space",
-    description: "A space for our team",
-    visibility: SpaceVisibility.PRIVATE,
-    type: SpaceType.TEAM,
-  },
-  project: {
-    name: "Project Space",
-    description: "A space for our project",
-    visibility: SpaceVisibility.PUBLIC,
-    type: SpaceType.PROJECT,
-  },
-};
+
 export const channelFixtures = {
   general: {
     name: "general",
@@ -93,38 +76,7 @@ export async function seedUsers(count = 3) {
 }
 
 // Seed spaces with an owner
-export async function seedSpaces(ownerId: string, count = 2) {
-  const spaces = [];
 
-  // Add fixture spaces first
-  for (const key in spaceFixtures) {
-    spaces.push({
-      ...spaceFixtures[key as keyof typeof spaceFixtures],
-      creatorId: ownerId,
-    });
-  }
-
-  // Add random spaces if needed
-  for (let i = spaces.length; i < count; i++) {
-    spaces.push({
-      name: `Space ${i}`,
-      description: `Description for Space ${i}`,
-      creatorId: ownerId,
-      visibility:
-        i % 2 === 0 ? SpaceVisibility.PUBLIC : SpaceVisibility.PRIVATE,
-      type:
-        i % 3 === 0
-          ? SpaceType.TEAM
-          : i % 3 === 1
-          ? SpaceType.PROJECT
-          : SpaceType.SOCIAL,
-    });
-  }
-
-  // Create all spaces
-  const createdSpaces = await Space.insertMany(spaces);
-  return createdSpaces;
-}
 
 // Seed channels for a space
 export async function seedChannels(spaceId: string, count = 3) {
@@ -157,6 +109,5 @@ export async function seedChannels(spaceId: string, count = 3) {
 // Clean up all test data
 export async function cleanupRepositoryTestData() {
   await User.deleteMany({});
-  await Space.deleteMany({});
   await Channel.deleteMany({});
 }
