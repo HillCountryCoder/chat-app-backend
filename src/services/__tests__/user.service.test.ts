@@ -7,7 +7,6 @@ import {
   ConflictError,
   NotFoundError,
   UnauthorizedError,
-  ValidationError,
 } from "../../common/errors";
 
 // Mock dependencies
@@ -88,7 +87,7 @@ describe("UserService", () => {
         username: validUserData.username,
         displayName: "Test User",
         status: UserStatus.OFFLINE,
-      } as User;
+      } as unknown as User;
 
       vi.mocked(userRepository.findOne).mockResolvedValue(null);
       vi.mocked(userRepository.create).mockResolvedValue(mockCreatedUser);
@@ -132,7 +131,7 @@ describe("UserService", () => {
         email: validUserData.email,
         username: validUserData.username,
         displayName: "Test User",
-      } as User;
+      } as unknown as User;
 
       vi.spyOn(userService, "createUser").mockResolvedValue(mockCreatedUser);
       // Act
@@ -298,7 +297,7 @@ describe("UserService", () => {
         _id: "123456789012",
         email: "test@example.com",
         username: "testuser",
-      } as User;
+      } as unknown as User;
 
       vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
 

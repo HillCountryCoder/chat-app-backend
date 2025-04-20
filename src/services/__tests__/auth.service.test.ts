@@ -49,10 +49,10 @@ describe("AuthService", () => {
     it("should generate a JWT token with correct payload", () => {
       // Arrange
       const mockUser = {
-        _id: "123456789012",
-        email: "test@example.com",
-        username: "testuser",
-      } as User;
+		  _id: "123456789012",
+		  email: "test@example.com",
+		  username: "testuser",
+	  } as unknown as User;
 
       // Act
       const token = authService.generateToken(mockUser);

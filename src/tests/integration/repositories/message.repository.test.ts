@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // src/repositories/__tests__/message.repository.test.ts
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import "../../../tests/integration/setup"; // Import MongoDB test setup
 import mongoose from "mongoose";
 import { messageRepository } from "../../../repositories/message.repository";
-import { ContentType, Message } from "../../../models";
+import { ContentType, Message, MessageInterface } from "../../../models";
 
 describe("MessageRepository", () => {
   let messageId1: string;
@@ -17,7 +18,7 @@ describe("MessageRepository", () => {
     directMessageId = new mongoose.Types.ObjectId().toString();
 
     // Create test messages
-    const message1 = await Message.create({
+    const message1: MessageInterface = await Message.create({
       messageId: `${Date.now()}_1`,
       senderId: userId,
       directMessageId,
