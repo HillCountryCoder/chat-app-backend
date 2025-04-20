@@ -38,7 +38,7 @@ export const socketAuthMiddleware = async (
     next();
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Socket authentication failed", { error: error.message });
+      logger.error("Socket authentication failed", error);
       next(new UnauthorizedError("Authentication failed"));
     }
   }
