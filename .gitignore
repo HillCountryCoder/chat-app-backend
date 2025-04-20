@@ -53,3 +53,7 @@ coverage/
 # Miscellaneous
 .DS_Store
 Thumbs.db
+
+*.js
+!jest.config.js
+*.d.ts
