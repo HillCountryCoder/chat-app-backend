@@ -57,8 +57,7 @@ class EnvironmentService {
         delete safeConfig.REDIS_PASSWORD;
         delete safeConfig.AWS_ACCESS_KEY_ID;
         delete safeConfig.AWS_SECRET_ACCESS_KEY;
-
-        logger.debug("Configuration values:", { config: safeConfig });
+        logger.debug("Configuration values:", safeConfig);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -70,7 +69,7 @@ class EnvironmentService {
         );
         throw new Error(`Environment validation failed: ${missingVars}`);
       }
-      logger.error("Failed to load environment variables", { error });
+      logger.error("Failed to load environment variables", error);
       throw error;
     }
   }

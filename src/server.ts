@@ -6,7 +6,7 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { createLogger, httpLogger } from "./common/logger";
-import { env, environmentService } from "./common/environment";
+import { env } from "./common/environment";
 import { NotFoundError } from "./common/errors";
 import { errorMiddleware } from "./common/middlewares/error.middleware";
 import { initializeDatabase } from "./common/database/init";
@@ -26,6 +26,7 @@ const app = express();
 const server = http.createServer(app);
 
 // Initialize Socket.IO with the HTTP server - IMPORTANT: Do this before defining Express routes
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const io = initializeSocketServer(server);
 
 // Middlewares
@@ -74,16 +75,14 @@ async function startApplication() {
   try {
     await initializeDatabase();
 
-	await connectRedis();
+    await connectRedis();
 
     server.listen(PORT, () => {
-      logger.info(`Server started successfully in ${env.NODE_ENV} mode`, {
-        port: PORT,
-      });
+      logger.info(`Server started successfully in ${env.NODE_ENV} mode`, PORT);
       logger.info(`Server is running at http://localhost:${PORT}`);
     });
   } catch (error: any) {
-    logger.error("Failed to start application", { error: error.message });
+    logger.error("Failed to start application", error);
     process.exit(1);
   }
 }
@@ -91,19 +90,21 @@ async function startApplication() {
 startApplication();
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
-  logger.error("Uncaught Exception", {
+  const errorObject = {
     error: error.message,
     stack: error.stack,
-  });
+  };
+  logger.error("Uncaught Exception", errorObject);
   process.exit(1);
 });
 
 // Handle unhandled promise rejections
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection", {
+process.on("unhandledRejection", (reason) => {
+  const errorObject = {
     reason: reason instanceof Error ? reason.message : reason,
     stack: reason instanceof Error ? reason.stack : undefined,
-  });
+  };
+  logger.error("Unhandled Rejection", errorObject);
 });
 
 // Graceful shutdown
