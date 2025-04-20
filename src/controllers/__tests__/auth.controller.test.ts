@@ -5,6 +5,7 @@ import { AuthController } from "../auth.controller";
 import { userService } from "../../services/user.service";
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../common/types/auth.type";
+import { Types } from "mongoose";
 
 // Mock dependencies
 vi.mock("../../services/user.service", () => ({
@@ -63,7 +64,7 @@ describe("AuthController", () => {
 
       const mockRegisteredUser = {
         user: {
-          _id: "123456789012",
+          _id: "123456789012" as unknown as Types.ObjectId,
           email: userData.email,
           username: userData.username,
           displayName: "Test User",
@@ -115,7 +116,7 @@ describe("AuthController", () => {
 
       const mockLoginResponse = {
         user: {
-          _id: "123456789012",
+          _id: "123456789012" as unknown as Types.ObjectId,
           email: credentials.email,
           username: "testuser",
           displayName: "Test User",
