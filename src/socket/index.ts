@@ -6,6 +6,7 @@ import { registerDirectMessageHandlers } from "./direct-message.handler";
 import { registerChannelHandlers } from "./channel.handler";
 import { Server as HttpServer } from "http";
 import { unreadMessagesService } from "../services/unread-messages.service";
+import { env } from "../common/environment";
 
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
@@ -15,9 +16,9 @@ export const initializeSocketServer = (server: HttpServer) => {
   const io = new Server(server, {
     cors: {
       origin:
-        process.env.CORS_ORIGIN === "*"
+        env.CORS_ORIGIN === "*"
           ? ["http://localhost:3000", "https://chat-app-frontend-one-coral.vercel.app"]
-          : process.env.CORS_ORIGIN,
+          : env.CORS_ORIGIN,
       credentials: true,
     },
     path: process.env.SOCKET_PATH || "/socket.io",
