@@ -11,6 +11,7 @@ import { NotFoundError } from "./common/errors";
 import { errorMiddleware } from "./common/middlewares/error.middleware";
 import { initializeDatabase } from "./common/database/init";
 import routes from "./routes";
+import healthRoutes from "./routes/health.routes";
 import { initializeSocketServer } from "./socket";
 import { connectRedis } from "./common/redis/client";
 
@@ -28,11 +29,17 @@ const server = http.createServer(app);
 // Initialize Socket.IO with the HTTP server - IMPORTANT: Do this before defining Express routes
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const io = initializeSocketServer(server);
-
+const corsOrigin =
+  env.CORS_ORIGIN === "*"
+    ? [
+        "http://localhost:3000",
+        "https://chat-app-frontend-one-coral.vercel.app",
+      ]
+    : env.CORS_ORIGIN;
 // Middlewares
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin: corsOrigin,
     credentials: true,
   }),
 );
@@ -44,6 +51,7 @@ app.use(
 );
 
 // Define routes
+app.use("/health", healthRoutes);
 app.get("/", (req, res) => {
   res.send("Chat Application is running!!");
 });

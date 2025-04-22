@@ -14,7 +14,10 @@ const errorHandler = new ErrorHandler(logger);
 export const initializeSocketServer = (server: HttpServer) => {
   const io = new Server(server, {
     cors: {
-      origin: process.env.CORS_ORIGIN || "*",
+      origin:
+        process.env.CORS_ORIGIN === "*"
+          ? ["http://localhost:3000", "https://chat-app-frontend-one-coral.vercel.app"]
+          : process.env.CORS_ORIGIN,
       credentials: true,
     },
     path: process.env.SOCKET_PATH || "/socket.io",
