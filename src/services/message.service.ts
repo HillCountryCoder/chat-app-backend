@@ -35,7 +35,7 @@ export class MessageService {
     return messages;
   }
 
-  findReactionByEmoji(emoji: string, message: MessageInterface): Reaction {
+  findReactionByEmoji(message: MessageInterface, emoji: string): Reaction {
     const reaction = message.reactions.find((r) => r.emoji === emoji);
     if (reaction) {
       return reaction;
