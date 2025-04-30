@@ -1,5 +1,3 @@
-// src/controllers/__tests__/auth.controller.test.ts
-
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { AuthController } from "../auth.controller";
 import { userService } from "../../services/user.service";
@@ -108,7 +106,7 @@ describe("AuthController", () => {
     it("should login a user and return 200 status", async () => {
       // Arrange
       const credentials = {
-        email: "test@example.com",
+        identifier: "test@example.com",
         password: "Password123",
       };
 
@@ -117,11 +115,18 @@ describe("AuthController", () => {
       const mockLoginResponse = {
         user: {
           _id: "123456789012" as unknown as Types.ObjectId,
-          email: credentials.email,
+          email: "test@example.com",
           username: "testuser",
           displayName: "Test User",
         },
         token: "mock-token",
+      };
+
+      // Using an object that matches what the login method actually sends
+      const expectedServiceCall = {
+        email: "test@example.com",
+        password: "Password123",
+        username: undefined,
       };
 
       vi.mocked(userService.loginUser).mockResolvedValue(mockLoginResponse);
@@ -134,13 +139,60 @@ describe("AuthController", () => {
       );
 
       // Assert
-      expect(userService.loginUser).toHaveBeenCalledWith(credentials);
+      expect(userService.loginUser).toHaveBeenCalledWith(expectedServiceCall);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith(mockLoginResponse);
+    });
+
+    it("should handle username identifier and return 200 status", async () => {
+      // Arrange
+      const credentials = {
+        identifier: "testuser", // Using a username instead of email
+        password: "Password123",
+      };
+
+      mockRequest.body = credentials;
+
+      const mockLoginResponse = {
+        user: {
+          _id: "123456789012" as unknown as Types.ObjectId,
+          email: "test@example.com",
+          username: "testuser",
+          displayName: "Test User",
+        },
+        token: "mock-token",
+      };
+
+      // Using an object that matches what the login method sends for username
+      const expectedServiceCall = {
+        username: "testuser",
+        password: "Password123",
+        email: undefined,
+      };
+
+      vi.mocked(userService.loginUser).mockResolvedValue(mockLoginResponse);
+
+      // Act
+      await AuthController.login(
+        mockRequest as Request,
+        mockResponse as Response,
+        nextFunction,
+      );
+
+      // Assert
+      expect(userService.loginUser).toHaveBeenCalledWith(expectedServiceCall);
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith(mockLoginResponse);
     });
 
     it("should call next with error if login fails", async () => {
       // Arrange
+      const credentials = {
+        identifier: "test@example.com",
+        password: "Password123",
+      };
+
+      mockRequest.body = credentials;
       const error = new Error("Login failed");
       vi.mocked(userService.loginUser).mockRejectedValue(error);
 
