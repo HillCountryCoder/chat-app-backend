@@ -3,7 +3,7 @@ import request from "supertest";
 import { createTestApp } from "../../helpers/test-app";
 import "../setup"; // Import the setup file for MongoDB in-memory testing
 import { loginCredentials, seedTestUser } from "../fixtures/auth-fixtures";
-import jwt from "jsonwebtoken";
+import * as jwt from "jsonwebtoken";
 import { env } from "../../../common/environment";
 
 describe("Authentication Middleware Integration", () => {
@@ -15,9 +15,10 @@ describe("Authentication Middleware Integration", () => {
     await seedTestUser();
 
     // Login to get a valid token
-    const loginResponse = await request(app)
-      .post("/api/auth/login")
-      .send(loginCredentials.valid);
+    const loginResponse = await request(app).post("/api/auth/login").send({
+      identifier: loginCredentials.valid.email,
+      password: loginCredentials.valid.password,
+    });
 
     authToken = loginResponse.body.token;
   });

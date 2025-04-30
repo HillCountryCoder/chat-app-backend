@@ -3,7 +3,7 @@ import request from "supertest";
 import { createTestApp } from "../../helpers/test-app";
 import "../setup"; // Import the setup file for MongoDB in-memory testing
 import { loginCredentials, seedTestUser } from "../fixtures/auth-fixtures";
-import { User, UserStatus } from "../../../models";
+import { User } from "../../../models";
 
 describe("User Login Integration", () => {
   const app = createTestApp();
@@ -16,7 +16,10 @@ describe("User Login Integration", () => {
   it("should login successfully with valid email and password", async () => {
     const response = await request(app)
       .post("/api/auth/login")
-      .send(loginCredentials.valid)
+      .send({
+        identifier: loginCredentials.valid.email,
+        password: loginCredentials.valid.password,
+      })
       .expect(200);
 
     // Verify response structure
@@ -34,7 +37,10 @@ describe("User Login Integration", () => {
   it("should login successfully with valid username and password", async () => {
     const response = await request(app)
       .post("/api/auth/login")
-      .send(loginCredentials.validUsername)
+      .send({
+        identifier: loginCredentials.validUsername.username,
+        password: loginCredentials.validUsername.password,
+      })
       .expect(200);
 
     // Verify response structure
@@ -48,7 +54,10 @@ describe("User Login Integration", () => {
   it("should return 404 with non-existent email", async () => {
     const response = await request(app)
       .post("/api/auth/login")
-      .send(loginCredentials.invalidEmail)
+      .send({
+        identifier: loginCredentials.invalidEmail.email,
+        password: loginCredentials.invalidEmail.password,
+      })
       .expect(404);
 
     expect(response.body).toHaveProperty("code", "NOT_FOUND");
@@ -57,7 +66,10 @@ describe("User Login Integration", () => {
   it("should return 401 with incorrect password", async () => {
     const response = await request(app)
       .post("/api/auth/login")
-      .send(loginCredentials.invalidPassword)
+      .send({
+        identifier: loginCredentials.invalidPassword.email,
+        password: loginCredentials.invalidPassword.password,
+      })
       .expect(401);
 
     expect(response.body).toHaveProperty("code", "UNAUTHORIZED");

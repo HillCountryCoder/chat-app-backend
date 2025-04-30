@@ -1,6 +1,5 @@
 import { User, UserStatus } from "../../../models";
-import { userRepository } from "../../../repositories/user.repository";
-import bcrypt from "bcrypt";
+
 export const testUsers = {
   valid: {
     email: "test@example.com",
@@ -24,6 +23,8 @@ export const testUsers = {
     lastName: "",
   },
 };
+
+// Original login credentials format for reference
 export const loginCredentials = {
   valid: {
     email: "existing@example.com",
@@ -42,9 +43,30 @@ export const loginCredentials = {
     password: "WrongPassword123!",
   },
 };
+
+// New format with identifier field for direct API usage
+export const authCredentials = {
+  valid: {
+    identifier: "existing@example.com",
+    password: "Password123!",
+  },
+  validUsername: {
+    identifier: "existinguser",
+    password: "Password123!",
+  },
+  invalidEmail: {
+    identifier: "nonexistent@example.com",
+    password: "Password123!",
+  },
+  invalidPassword: {
+    identifier: "existing@example.com",
+    password: "WrongPassword123!",
+  },
+};
+
 export async function seedTestUser() {
   const { email, username, password, firstName, lastName } = testUsers.existing;
-  
+
   // Create a new User instance which will trigger the pre-save hook
   const user = new User({
     email,
@@ -53,7 +75,7 @@ export async function seedTestUser() {
     displayName: `${firstName} ${lastName}`,
     status: UserStatus.OFFLINE,
   });
-  
+
   // Save to trigger the pre-save hook
   await user.save();
 }
