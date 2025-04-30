@@ -26,7 +26,7 @@ vi.mock("../../../common/redis/client", () => ({
 
 vi.mock("../../../common/environment", async (importOriginal) => {
   const actual =
-    (await importOriginal()) as typeof import("../../../common/environment");
+    (await importOriginal()) as typeof import("../../common/environment");
   return {
     env: {
       ...actual,
