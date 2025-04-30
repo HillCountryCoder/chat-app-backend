@@ -1,10 +1,22 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import request from "supertest";
 import { createTestApp } from "../../helpers/test-app";
 import "../setup"; // Import the setup file for MongoDB in-memory testing
 import { seedTestUser, loginCredentials } from "../fixtures/auth-fixtures";
 import { User, DirectMessage, Message } from "../../../models";
-import mongoose from "mongoose";
+
+// Mock the unreadMessagesService to prevent Redis connection issues
+vi.mock("../../../services/unread-messages.service", () => ({
+  unreadMessagesService: {
+    incrementUnreadCount: vi.fn().mockResolvedValue(undefined),
+    markAsRead: vi.fn().mockResolvedValue(undefined),
+    getAllUnreadCounts: vi
+      .fn()
+      .mockResolvedValue({ directMessages: {}, channels: {} }),
+    getUnreadCount: vi.fn().mockResolvedValue(0),
+    getTotalUnreadCount: vi.fn().mockResolvedValue(0),
+  },
+}));
 
 describe("Direct Messaging Integration Tests", () => {
   const app = createTestApp();
@@ -18,9 +30,10 @@ describe("Direct Messaging Integration Tests", () => {
     // Seed first user and get token
     await seedTestUser();
 
-    const loginResponse1 = await request(app)
-      .post("/api/auth/login")
-      .send(loginCredentials.valid);
+    const loginResponse1 = await request(app).post("/api/auth/login").send({
+      identifier: loginCredentials.valid.email,
+      password: loginCredentials.valid.password,
+    });
 
     authToken1 = loginResponse1.body.token;
     userId1 = loginResponse1.body.user._id;
@@ -37,7 +50,7 @@ describe("Direct Messaging Integration Tests", () => {
     userId2 = user2._id.toString();
 
     const loginResponse2 = await request(app).post("/api/auth/login").send({
-      email: "user2@example.com",
+      identifier: "user2@example.com",
       password: "Password123!",
     });
 
@@ -172,7 +185,7 @@ describe("Direct Messaging Integration Tests", () => {
       });
 
       const loginResponse3 = await request(app).post("/api/auth/login").send({
-        email: "user3@example.com",
+        identifier: "user3@example.com",
         password: "Password123!",
       });
 
