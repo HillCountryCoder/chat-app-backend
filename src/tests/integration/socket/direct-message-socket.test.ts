@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Server } from "socket.io";
 import { io as ioc, Socket as ClientSocket } from "socket.io-client";
 import { createServer } from "http";
@@ -11,6 +11,19 @@ import { createTestApp } from "../../helpers/test-app";
 import { User } from "../../../models";
 import { authService } from "../../../services/auth.service";
 import { Server as HttpServer } from "http";
+
+// Mock the unreadMessagesService to avoid Redis issues
+vi.mock("../../../services/unread-messages.service", () => ({
+  unreadMessagesService: {
+    incrementUnreadCount: vi.fn().mockResolvedValue(undefined),
+    markAsRead: vi.fn().mockResolvedValue(undefined),
+    getAllUnreadCounts: vi
+      .fn()
+      .mockResolvedValue({ directMessages: {}, channels: {} }),
+    getUnreadCount: vi.fn().mockResolvedValue(0),
+    getTotalUnreadCount: vi.fn().mockResolvedValue(0),
+  },
+}));
 
 describe("Direct Message Socket Integration Tests", () => {
   const app = createTestApp();
@@ -38,9 +51,10 @@ describe("Direct Message Socket Integration Tests", () => {
     // Seed users and get tokens
     await seedTestUser();
 
-    const loginResponse1 = await request(app)
-      .post("/api/auth/login")
-      .send(loginCredentials.valid);
+    const loginResponse1 = await request(app).post("/api/auth/login").send({
+      identifier: loginCredentials.valid.email,
+      password: loginCredentials.valid.password,
+    });
 
     token1 = loginResponse1.body.token;
     userId1 = loginResponse1.body.user._id;
@@ -129,11 +143,11 @@ describe("Direct Message Socket Integration Tests", () => {
           receiverId: userId2,
           content: "Hello from socket test",
         },
-        (response: { success: boolean; error?: string }) => {
-          if (response.success) {
+        (response: any) => {
+          if (response && response.success) {
             resolve();
           } else {
-            reject(new Error(response.error || "Failed to send message"));
+            reject(new Error(response?.error || "Failed to send message"));
           }
         },
       );
@@ -164,11 +178,11 @@ describe("Direct Message Socket Integration Tests", () => {
           receiverId: userId2,
           content: "First message",
         },
-        (response: { success: boolean; error?: string }) => {
-          if (response.success) {
+        (response: any) => {
+          if (response && response.success) {
             resolve(response);
           } else {
-            reject(new Error(response.error || "Failed to send message"));
+            reject(new Error(response?.error || "Failed to send message"));
           }
         },
       );
@@ -191,11 +205,11 @@ describe("Direct Message Socket Integration Tests", () => {
           directMessageId: dmId,
           content: "Second message",
         },
-        (response: { success: boolean; error?: string }) => {
-          if (response.success) {
+        (response: any) => {
+          if (response && response.success) {
             resolve();
           } else {
-            reject(new Error(response.error || "Failed to send message"));
+            reject(new Error(response?.error || "Failed to send message"));
           }
         },
       );
@@ -221,7 +235,7 @@ describe("Direct Message Socket Integration Tests", () => {
           receiverId: userId2,
           // Missing content field
         },
-        (response: { success: boolean; error?: string }) => {
+        (response: any) => {
           resolve(response);
         },
       );
