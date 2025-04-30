@@ -5,6 +5,7 @@ import { messageRepository } from "../../repositories/message.repository";
 import { userRepository } from "../../repositories/user.repository";
 import { NotFoundError, ForbiddenError } from "../../common/errors";
 import mongoose from "mongoose";
+import { unreadMessagesService } from "../unread-messages.service";
 
 // Mock repositories
 vi.mock("../../repositories/direct-message.repository", () => ({
@@ -27,6 +28,18 @@ vi.mock("../../repositories/message.repository", () => ({
 vi.mock("../../repositories/user.repository", () => ({
   userRepository: {
     findById: vi.fn(),
+  },
+}));
+
+// Mock unread messages service
+vi.mock("../unread-messages.service", () => ({
+  unreadMessagesService: {
+    incrementUnreadCount: vi.fn().mockResolvedValue(undefined),
+    markAsRead: vi.fn().mockResolvedValue(undefined),
+    getAllUnreadCounts: vi
+      .fn()
+      .mockResolvedValue({ directMessages: {}, channels: {} }),
+    getUnreadCount: vi.fn().mockResolvedValue(0),
   },
 }));
 
@@ -241,6 +254,13 @@ describe("DirectMessageService", () => {
         directMessageId,
         { lastActivity: expect.any(Date) },
       );
+
+      expect(unreadMessagesService.incrementUnreadCount).toHaveBeenCalledWith(
+        "dm",
+        directMessageId,
+        userId1,
+        expect.any(Array),
+      );
     });
 
     it("should get or create direct message when receiverId is provided", async () => {
@@ -283,6 +303,13 @@ describe("DirectMessageService", () => {
         message: mockMessage,
         directMessage: mockDM,
       });
+
+      expect(unreadMessagesService.incrementUnreadCount).toHaveBeenCalledWith(
+        "dm",
+        directMessageId,
+        userId1,
+        expect.any(Array),
+      );
     });
 
     it("should throw error if neither directMessageId nor receiverId is provided", async () => {
