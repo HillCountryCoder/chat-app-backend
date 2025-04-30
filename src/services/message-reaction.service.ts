@@ -5,7 +5,9 @@ import { MessageService } from "./message.service";
 export class MessageReactionService {
   private static instance: MessageReactionService;
   private readonly messageService: MessageService;
-  private constructor() {}
+  private constructor() {
+	this.messageService = MessageService.getInstance();
+  }
 
   static getInstance(): MessageReactionService {
     if (!MessageReactionService.instance) {
