@@ -7,7 +7,7 @@ import { registerChannelHandlers } from "./channel.handler";
 import { Server as HttpServer } from "http";
 import { unreadMessagesService } from "../services/unread-messages.service";
 import { env } from "../common/environment";
-
+import { registerMessageReactionHandlers } from "./message-reaction.handler";
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
 const errorHandler = new ErrorHandler(logger);
@@ -17,7 +17,10 @@ export const initializeSocketServer = (server: HttpServer) => {
     cors: {
       origin:
         env.CORS_ORIGIN === "*"
-          ? ["http://localhost:3000", "https://chat-app-frontend-one-coral.vercel.app"]
+          ? [
+              "http://localhost:3000",
+              "https://chat-app-frontend-one-coral.vercel.app",
+            ]
           : env.CORS_ORIGIN,
       credentials: true,
     },
@@ -46,6 +49,7 @@ export const initializeSocketServer = (server: HttpServer) => {
       // Register handlers
       registerDirectMessageHandlers(io, socket, userId);
       registerChannelHandlers(io, socket, userId);
+      registerMessageReactionHandlers(io, socket, userId);
 
       // Send initial unread counts
       async function sendInitialUnreadCounts() {

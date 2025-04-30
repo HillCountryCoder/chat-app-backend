@@ -1,13 +1,10 @@
 import { MessageInterface, Reaction } from "../models";
 import mongoose from "mongoose";
-import { MessageService } from "./message.service";
+import { messageService } from "./message.service";
 
 export class MessageReactionService {
   private static instance: MessageReactionService;
-  private readonly messageService: MessageService;
-  private constructor() {
-	this.messageService = MessageService.getInstance();
-  }
+  private constructor() {}
 
   static getInstance(): MessageReactionService {
     if (!MessageReactionService.instance) {
@@ -25,7 +22,7 @@ export class MessageReactionService {
     emoji: string,
   ): Promise<MessageInterface> {
     const message: MessageInterface =
-      await this.messageService.getMessageByIdOrThrowError(messageId);
+      await messageService.getMessageByIdOrThrowError(messageId);
 
     const existingReaction = message.reactions.find(
       (reaction) =>
@@ -40,7 +37,7 @@ export class MessageReactionService {
       return message;
     }
 
-    const reaction = this.messageService.findReactionByEmoji(emoji, message);
+    const reaction = messageService.findReactionByEmoji(emoji, message);
 
     if (reaction) {
       reaction.users.push(new mongoose.Types.ObjectId(userId));
@@ -64,11 +61,9 @@ export class MessageReactionService {
     userId: string,
     emoji: string,
   ): Promise<MessageInterface> {
-    const message = await this.messageService.getMessageByIdOrThrowError(
-      messageId,
-    );
+    const message = await messageService.getMessageByIdOrThrowError(messageId);
 
-    const reaction = this.messageService.findReactionByEmoji(emoji, message);
+    const reaction = await messageService.findReactionByEmoji(emoji, message);
 
     if (!reaction) {
       return message;
@@ -100,9 +95,7 @@ export class MessageReactionService {
    * Get all reactions for a message
    */
   async getReactions(messageId: string): Promise<Reaction[]> {
-    const message = await this.messageService.getMessageByIdOrThrowError(
-      messageId,
-    );
+    const message = await messageService.getMessageByIdOrThrowError(messageId);
 
     return message.reactions;
   }

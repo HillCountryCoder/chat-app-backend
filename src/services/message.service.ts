@@ -44,3 +44,5 @@ export class MessageService {
     }
   }
 }
+
+export const messageService = MessageService.getInstance();
