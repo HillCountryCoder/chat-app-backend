@@ -4,7 +4,7 @@ import { messageRepository } from "../repositories/message.repository";
 import { userRepository } from "../repositories/user.repository";
 import { NotFoundError, ForbiddenError } from "../common/errors";
 import { v4 as uuidv4 } from "uuid";
-import { ContentType, DirectMessage, DirectMessageInterface } from "../models";
+import { ContentType, DirectMessageInterface } from "../models";
 import mongoose from "mongoose";
 import { unreadMessagesService } from "./unread-messages.service";
 
