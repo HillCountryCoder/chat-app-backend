@@ -1,26 +1,34 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-// src/repositories/__tests__/message.repository.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import "../../../tests/integration/setup"; // Import MongoDB test setup
 import mongoose from "mongoose";
 import { messageRepository } from "../../../repositories/message.repository";
-import { ContentType, Message, MessageInterface } from "../../../models";
+import { ContentType, Message, MessageInterface, User } from "../../../models";
 
 describe("MessageRepository", () => {
   let messageId1: string;
   let messageId2: string;
   let userId: string;
+  let userDoc: any;
   let directMessageId: string;
 
   beforeEach(async () => {
-    // Create test user ID
-    userId = new mongoose.Types.ObjectId().toString();
+    // Create actual test user first
+    userDoc = await User.create({
+      email: "test@example.com",
+      username: "testuser",
+      passwordHash: "hashedpassword",
+      displayName: "Test User",
+      status: "offline",
+    });
+
+    userId = userDoc._id.toString();
     directMessageId = new mongoose.Types.ObjectId().toString();
 
-    // Create test messages
+    // Create test messages with reference to real user
     const message1: MessageInterface = await Message.create({
       messageId: `${Date.now()}_1`,
-      senderId: userId,
+      senderId: userDoc._id, // Use the actual user document ID
       directMessageId,
       content: "Test message 1",
       contentType: ContentType.TEXT,
@@ -29,7 +37,7 @@ describe("MessageRepository", () => {
 
     const message2 = await Message.create({
       messageId: `${Date.now()}_2`,
-      senderId: userId,
+      senderId: userDoc._id, // Use the actual user document ID
       directMessageId,
       content: "Test message 2",
       contentType: ContentType.TEXT,
@@ -42,6 +50,7 @@ describe("MessageRepository", () => {
 
   afterEach(async () => {
     await Message.deleteMany({});
+    await User.deleteMany({});
   });
 
   describe("findByDirectMessageId", () => {
