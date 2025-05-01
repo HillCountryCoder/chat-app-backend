@@ -14,6 +14,6 @@
     "strictPropertyInitialization": false /* Added: Prevent properties without initializers error */,
     "types": ["node", "vitest"] /* Added: Include type definitions */
   },
-  "include": ["src/**/*"] /* Added: Files to include */,
-  "exclude": ["node_modules", "dist"] /* Added: Files to exclude */
+  "include": ["src/**/*", "**/*.test.ts"] /* Added: Files to include */,
+  "exclude": ["node_modules", "dist", "cdk_chat"] /* Added: Files to exclude */
 }
