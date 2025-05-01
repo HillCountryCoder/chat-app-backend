@@ -1,19 +1,19 @@
 {
-	"compilerOptions": {
-	  "target": "es2016",
-	  "module": "commonjs",
-	  "outDir": "./dist",                 /* Added: Output directory */
-	  "rootDir": "./src",                 /* Added: Source directory */
-	  "sourceMap": true,                  /* Added: Generate source maps */
-	  "esModuleInterop": true,
-	  "forceConsistentCasingInFileNames": true,
-	  "strict": true,
-	  "skipLibCheck": true,
-	  "resolveJsonModule": true,          /* Added: Allow importing JSON files */
-	  "noImplicitAny": true,              /* Added: Catch missing type declarations */
-	  "strictPropertyInitialization": false, /* Added: Prevent properties without initializers error */
-	  "types": ["node", "vitest"]           /* Added: Include type definitions */
-	},
-	"include": ["src/**/*"],              /* Added: Files to include */
-	"exclude": ["node_modules", "**/*.test.ts", "dist"] /* Added: Files to exclude */
-  }
+  "compilerOptions": {
+    "target": "es2016",
+    "module": "commonjs",
+    "outDir": "./dist" /* Added: Output directory */,
+    "rootDir": "./src" /* Added: Source directory */,
+    "sourceMap": true /* Added: Generate source maps */,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true /* Added: Allow importing JSON files */,
+    "noImplicitAny": true /* Added: Catch missing type declarations */,
+    "strictPropertyInitialization": false /* Added: Prevent properties without initializers error */,
+    "types": ["node", "vitest"] /* Added: Include type definitions */
+  },
+  "include": ["src/**/*"] /* Added: Files to include */,
+  "exclude": ["node_modules", "dist"] /* Added: Files to exclude */
+}
