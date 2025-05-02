@@ -147,10 +147,23 @@ export const registerDirectMessageHandlers = (
     }
   });
 
-  socket.on("join_direct_message", (data) => {
-    logger.event(socket.id, "join_direct_message", data);
-    const { directMessageId } = data;
-    socket.join(`direct_message:${directMessageId}`);
+  socket.on("join_direct_message", (data, callback) => {
+    try {
+      logger.event(socket.id, "join_direct_message", data);
+      const { directMessageId } = data;
+      socket.join(`direct_message:${directMessageId}`);
+
+      if (typeof callback === "function") {
+        callback({ success: true });
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(socket.id, error);
+        if (typeof callback === "function") {
+          callback({ success: false, error: "Failed to join room" });
+        }
+      }
+    }
   });
 
   socket.on("leave_direct_message", (data) => {
