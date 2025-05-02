@@ -204,4 +204,41 @@ export const registerChannelHandlers = (
       }
     }
   });
+  socket.on("join_channel_room", async (data, callback) => {
+    try {
+      const { channelId } = data;
+
+      // Verify user has access to this channel
+      await channelService.getChannelById(channelId, userId);
+
+      // Join the channel room
+      const channelRoom = `channel:${channelId}`;
+      socket.join(channelRoom);
+
+      logger.event(socket.id, "joined_channel_room", { channelId });
+
+      if (typeof callback === "function") {
+        callback({ success: true });
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(socket.id, error);
+
+        if (typeof callback === "function") {
+          errorHandler.handleSocketError(error, socket);
+          callback({
+            success: false,
+            error: error.message || "Failed to join channel room",
+          });
+        }
+      }
+    }
+  });
+
+  socket.on("leave_channel_room", async (data) => {
+    const { channelId } = data;
+    const channelRoom = `channel:${channelId}`;
+    socket.leave(channelRoom);
+    logger.event(socket.id, "left_channel_room", { channelId });
+  });
 };
