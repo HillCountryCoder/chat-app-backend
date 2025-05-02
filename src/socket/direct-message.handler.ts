@@ -146,4 +146,16 @@ export const registerDirectMessageHandlers = (
       }
     }
   });
+
+  socket.on("join_direct_message", (data) => {
+    logger.event(socket.id, "join_direct_message", data);
+    const { directMessageId } = data;
+    socket.join(`direct_message:${directMessageId}`);
+  });
+
+  socket.on("leave_direct_message", (data) => {
+    logger.event(socket.id, "leave_direct_message", data);
+    const { directMessageId } = data;
+    socket.leave(`direct_message:${directMessageId}`);
+  });
 };
