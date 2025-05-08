@@ -29,17 +29,13 @@ const server = http.createServer(app);
 // Initialize Socket.IO with the HTTP server - IMPORTANT: Do this before defining Express routes
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const io = initializeSocketServer(server);
-const corsOrigin =
-  env.CORS_ORIGIN === "*"
-    ? [
-        "http://localhost:3000",
-        "https://chat-app-frontend-one-coral.vercel.app",
-      ]
-    : env.CORS_ORIGIN;
+const corsOrigins = env.CORS_ORIGIN
+  ? env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
+  : "*";
 // Middlewares
 app.use(
   cors({
-    origin: corsOrigin,
+    origin: corsOrigins,
     credentials: true,
   }),
 );

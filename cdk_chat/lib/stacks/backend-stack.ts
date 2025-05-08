@@ -88,7 +88,7 @@ export class ChatBackendStack extends cdk.Stack {
           PORT: "5000",
           JWT_SECRET: "itsasecretansakdbaskjdbaskjdbaskdbaskdbsakdsdaks",
           JWT_EXPIRES_IN: "1d",
-          CORS_ORIGIN: "https://chat-app-frontend-one-coral.vercel.app", // Add CORS setting
+          CORS_ORIGIN: "https://chat-app-frontend-one-coral.vercel.app,http://localhost:3000", // Add CORS setting
         },
         secrets: {
           MONGODB_URI: ecs.Secret.fromSecretsManager(mongoDbSecret, "url"),
