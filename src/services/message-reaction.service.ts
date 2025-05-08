@@ -32,39 +32,46 @@ export class MessageReactionService {
     );
 
     const message = await messageService.getMessageByIdOrThrowError(messageId);
-
-    // Find existing reaction with this emoji
-    let reaction;
-    try {
-      reaction = messageService.findReactionByEmoji(message, emoji);
-    } catch (error) {
-      if (error instanceof NotFoundError) {
-        // Create new reaction if not found
-        const userObjectId = this.createObjectId(userId);
-        message.reactions.push({
-          emoji,
-          count: 1,
-          users: [userObjectId],
-        });
-        await message.save();
-        return message;
-      }
-      throw error;
-    }
-
-    // Check if user already reacted with this emoji
     const userObjectId = this.createObjectId(userId);
-    const userAlreadyReacted = reaction.users.some(
-      (id) => id.toString() === userObjectId.toString(),
-    );
 
-    if (!userAlreadyReacted) {
-      // Add user to existing reaction
-      reaction.users.push(userObjectId);
-      reaction.count = reaction.users.length;
-      await message.save();
+    // First, remove any existing reactions from this user on this message
+    for (const reaction of message.reactions) {
+      const userIndex = reaction.users.findIndex(
+        (id) => id.toString() === userObjectId.toString(),
+      );
+
+      if (userIndex !== -1) {
+        // Remove user from this reaction
+        reaction.users.splice(userIndex, 1);
+        reaction.count = reaction.users.length;
+
+        // If no users left for this reaction, remove it entirely
+        if (reaction.users.length === 0) {
+          const reactionIndex = message.reactions.indexOf(reaction);
+          if (reactionIndex !== -1) {
+            message.reactions.splice(reactionIndex, 1);
+          }
+        }
+      }
     }
 
+    // Now add the new reaction
+    const existingReaction = message.reactions.find((r) => r.emoji === emoji);
+
+    if (existingReaction) {
+      // Add user to existing reaction
+      existingReaction.users.push(userObjectId);
+      existingReaction.count = existingReaction.users.length;
+    } else {
+      // Create new reaction
+      message.reactions.push({
+        emoji,
+        count: 1,
+        users: [userObjectId],
+      });
+    }
+
+    await message.save();
     return message;
   }
 
