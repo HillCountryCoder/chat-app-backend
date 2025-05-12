@@ -14,6 +14,7 @@ const sendMessageSchema = z
     content: z.string().min(1).max(2000),
     receiverId: z.string().optional(),
     directMessageId: z.string().optional(),
+	replyToId: z.string().optional()
   })
   .refine((data) => data.receiverId || data.directMessageId, {
     message: "Either receiverId or directMessageId must be provided",
@@ -48,6 +49,7 @@ export const registerDirectMessageHandlers = (
         receiverId: validatedData.receiverId,
         directMessageId: validatedData.directMessageId,
         content: validatedData.content,
+		replyToId: validatedData.replyToId,
       });
 
       // Find the recipient (the other user in the conversation)

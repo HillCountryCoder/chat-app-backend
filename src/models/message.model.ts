@@ -25,13 +25,14 @@ export interface MessageInterface extends Document {
   senderId: mongoose.Types.ObjectId;
   channelId?: mongoose.Types.ObjectId;
   directMessageId?: mongoose.Types.ObjectId;
-  threadId?: mongoose.Types.ObjectId; // ID of the thread if this message is part of a thread
-  isThreadStarter?: boolean; // Indicates if this message started a thread
+  threadId?: mongoose.Types.ObjectId;
+  isThreadStarter?: boolean;
   content: string;
   contentType: ContentType;
   mentions: Mention[];
   reactions: Reaction[];
   attachments: mongoose.Types.ObjectId[];
+  replyToId?: mongoose.Types.ObjectId;
   createdAt: Date;
   editedAt?: Date;
   isEdited: boolean;
@@ -105,6 +106,10 @@ const messageSchema = new Schema<MessageInterface>(
         ref: "Attachment",
       },
     ],
+    replyToId: {
+      type: Schema.Types.ObjectId,
+      ref: "Message",
+    },
     createdAt: { type: Date, default: Date.now },
     editedAt: { type: Date },
     isEdited: { type: Boolean, default: false },
@@ -112,20 +117,36 @@ const messageSchema = new Schema<MessageInterface>(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   },
 );
+
+// Virtual for replyTo
+messageSchema.virtual("replyTo", {
+  ref: "Message",
+  localField: "replyToId",
+  foreignField: "_id",
+  justOne: true,
+});
+
+// Pre-hook to populate replyTo virtual
+messageSchema.pre(["find", "findOne", "findOneAndUpdate"], function () {
+  this.populate({
+    path: "replyTo",
+    select: "content senderId",
+    populate: {
+      path: "senderId",
+      select: "displayName username",
+    },
+  });
+});
 
 messageSchema.pre("validate", function (next) {
   const hasChannel = !!this.channelId;
   const hasDirect = !!this.directMessageId;
   const hasThread = !!this.threadId;
 
-  // A message can be in ONE of the following:
-  // 1. A channel (main channel message)
-  // 2. A direct message
-  // 3. A thread (which is associated with a channel via the Thread model)
-
-  // Exactly one of these must be defined
   const validContextCount = [hasChannel, hasDirect, hasThread].filter(
     Boolean,
   ).length;
@@ -149,6 +170,7 @@ messageSchema.index({ threadId: 1, createdAt: -1 });
 messageSchema.index({ isThreadStarter: 1 });
 messageSchema.index({ "mentions.userId": 1 });
 messageSchema.index({ isPinned: 1 });
+messageSchema.index({ replyToId: 1 });
 
 export const Message = mongoose.model<MessageInterface>(
   "Message",

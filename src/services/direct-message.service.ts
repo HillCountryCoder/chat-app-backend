@@ -123,6 +123,7 @@ export class DirectMessageService {
     receiverId?: string;
     directMessageId?: string;
     content: string;
+    replyToId?: string;
   }) {
     let directMessageId = data.directMessageId;
 
@@ -139,15 +140,22 @@ export class DirectMessageService {
       throw new Error("Either directMessageId or receiverId must be provided");
     }
 
-    // Verify the direct message exists and the sender is a participant
     const directMessage = await this.getDirectMessageById(
       directMessageId,
       data.senderId,
     );
 
-    // Create a unique messageId
     const messageId = `${Date.now()}_${uuidv4()}`;
-
+    // Validate reply message exists
+    if (data.replyToId) {
+      const replyMessage = await messageRepository.findById(data.replyToId);
+      if (
+        !replyMessage ||
+        replyMessage.directMessageId?.toString() !== directMessageId
+      ) {
+        throw new Error("Invalid reply message");
+      }
+    }
     // Create the message
     const message = await messageRepository.createMessage({
       messageId,
@@ -157,6 +165,21 @@ export class DirectMessageService {
       contentType: ContentType.TEXT,
     });
 
+    const messageDocument = await messageRepository.findById(
+      message._id.toString(),
+    );
+    const populatedMessage = await messageDocument?.populate({
+      path: "replyTo",
+      select: "content senderId",
+      populate: {
+        path: "senderId",
+        select: "displayName",
+      },
+    });
+    const populatedMessageWithSenderId = await populatedMessage.populate({
+      path: "senderId",
+      select: "_id username displayName avatarUrl",
+    });
     // Update the lastActivity timestamp of the direct message
     await directMessageRepository.update(directMessageId, {
       lastActivity: new Date(),
@@ -173,7 +196,7 @@ export class DirectMessageService {
     );
 
     return {
-      message,
+      message: populatedMessageWithSenderId,
       directMessage,
     };
   }
