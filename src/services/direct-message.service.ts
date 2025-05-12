@@ -163,6 +163,7 @@ export class DirectMessageService {
       directMessageId,
       content: data.content,
       contentType: ContentType.TEXT,
+      replyToId: data.replyToId,
     });
 
     const messageDocument = await messageRepository.findById(

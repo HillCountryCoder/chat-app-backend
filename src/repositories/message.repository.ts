@@ -237,6 +237,7 @@ export class MessageRepository extends BaseRepository<
     content: string;
     contentType?: string;
     isThreadStarter?: boolean;
+    replyToId?: string;
   }): Promise<MessageInterface> {
     return this.create(message);
   }
