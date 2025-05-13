@@ -56,8 +56,25 @@ const channelMemberSchema = new Schema<ChannelMemberInterface>(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   },
 );
+
+channelMemberSchema.virtual("user", {
+  ref: "User",
+  localField: "userId",
+  foreignField: "_id",
+  justOne: true,
+});
+
+// Pre-hook to populate user virtual
+channelMemberSchema.pre(["find", "findOne", "findOneAndUpdate"], function () {
+  this.populate({
+    path: "user",
+    select: "_id username displayName avatarUrl email status",
+  });
+});
 
 // Compound index to ensure a user can only be a member of a channel once
 channelMemberSchema.index({ channelId: 1, userId: 1 }, { unique: true });

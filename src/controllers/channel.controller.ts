@@ -1,5 +1,5 @@
 // src/controllers/channel.controller.ts
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../common/types/auth.type";
 import { channelService } from "../services/channel.service";
 import { createLogger } from "../common/logger";
@@ -113,28 +113,6 @@ export class ChannelController {
 
       const channel = await channelService.getChannelById(id, userId);
       res.json(channel);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  static async getChannelMembers(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction,
-  ) {
-    try {
-      const { id } = req.params;
-      logger.debug(`Getting members for channel ID: ${id}`);
-
-      if (!req.user) {
-        throw new UnauthorizedError("User not authenticated");
-      }
-
-      const userId = req.user._id.toString();
-
-      const members = await channelService.getChannelMembers(id, userId);
-      res.json(members);
     } catch (error) {
       next(error);
     }
@@ -466,6 +444,27 @@ export class ChannelController {
 
       const result = await channelService.markMessagesAsRead(id, userId);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+  static async getChannelMembers(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id } = req.params;
+      logger.debug(`Getting members for channel ID: ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      const userId = req.user._id.toString();
+
+      const members = await channelService.getChannelMembers(id, userId);
+      res.json(members);
     } catch (error) {
       next(error);
     }
