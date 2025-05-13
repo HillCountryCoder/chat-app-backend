@@ -12,6 +12,7 @@ const errorHandler = new ErrorHandler(createLogger("socket-error-handler"));
 const sendMessageSchema = z.object({
   content: z.string().min(1).max(2000),
   channelId: z.string(),
+  replyToId: z.string().optional(),
 });
 
 export const registerChannelHandlers = (
@@ -63,6 +64,7 @@ export const registerChannelHandlers = (
         senderId: userId,
         channelId: validatedData.channelId,
         content: validatedData.content,
+        replyToId: validatedData.replyToId,
       });
 
       // Emit to the channel room

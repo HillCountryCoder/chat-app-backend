@@ -1,5 +1,3 @@
-// src/services/channel.service.ts
-import { createLogger } from "../common/logger";
 import { channelRepository } from "../repositories/channel.repository";
 import { channelMemberRepository } from "../repositories/channel-member.repository";
 import { userRepository } from "../repositories/user.repository";
@@ -12,10 +10,7 @@ import {
 } from "../common/errors";
 import { v4 as uuidv4 } from "uuid";
 import {
-  Channel,
   ChannelType,
-  ChannelMember,
-  Message,
   ContentType,
   MemberRole,
   ChannelInterface,
@@ -27,8 +22,6 @@ import {
 import mongoose from "mongoose";
 import { threadRepository } from "../repositories/thread.repository";
 import { unreadMessagesService } from "./unread-messages.service";
-
-const logger = createLogger("channel-service");
 
 export interface CreateChannelDTO {
   name: string;
@@ -368,6 +361,7 @@ export class ChannelService {
     senderId: string;
     channelId: string;
     content: string;
+    replyToId?: string;
   }) {
     // Verify channel exists and user is a member
     await this.getChannelById(data.channelId, data.senderId);
@@ -382,8 +376,24 @@ export class ChannelService {
       channelId: data.channelId,
       content: data.content,
       contentType: ContentType.TEXT,
+      replyToId: data.replyToId,
     });
 
+    const messageDocument = await messageRepository.findById(
+      message._id.toString(),
+    );
+    const populatedMessage = await messageDocument?.populate({
+      path: "replyTo",
+      select: "content senderId",
+      populate: {
+        path: "senderId",
+        select: "displayName",
+      },
+    });
+    const populatedMessageWithSenderId = await populatedMessage.populate({
+      path: "senderId",
+      select: "_id username displayName avatarUrl",
+    });
     // Update the channel's lastActivity timestamp
     await channelRepository.update(data.channelId, {
       lastActivity: new Date(),
@@ -406,7 +416,7 @@ export class ChannelService {
     );
 
     return {
-      message,
+      message: populatedMessageWithSenderId,
     };
   }
   async markMessagesAsRead(channelId: string, userId: string) {
