@@ -15,7 +15,7 @@ export default [
         project: "./tsconfig.json",
       },
     },
-    files: ["**/*.ts"],
+    files: ["*.ts"],
     rules: {
       // Add any custom rules here
       "@typescript-eslint/no-explicit-any": "warn",
