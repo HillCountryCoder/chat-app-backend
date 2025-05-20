@@ -21,7 +21,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+	"generate-api-key": "node scripts/generate-api-key.js"
   },
   "keywords": [
     "chat",
@@ -46,7 +47,9 @@
     "socket.io-client": "^4.8.1",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+	"@aws-sdk/client-s3": "^3.410.0",
+    "@aws-sdk/s3-request-presigner": "^3.410.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",

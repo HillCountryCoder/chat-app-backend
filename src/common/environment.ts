@@ -32,10 +32,22 @@ const envSchema = z.object({
 
   SOCKET_PATH: z.string().optional(),
 
-  AWS_S3_BUCKET: z.string().optional(),
+  // AWS , S3 and Cloudfront
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   AWS_REGION: z.string().optional(),
+  MEDIA_BUCKET_NAME: z.string().optional(),
+  THUMBNAIL_BUCKET_NAME: z.string().optional(),
+  CDN_DOMAIN: z.string().optional(),
+
+  // API Security
+  API_KEY: z.string().default(() => {
+    // In development, generate a stable key if not provided
+    if (process.env.NODE_ENV === "development" && !process.env.API_KEY) {
+      return "dev-api-key-12345";
+    }
+    return process.env.API_KEY || "";
+  }),
 });
 
 type EnvSchema = z.infer<typeof envSchema>;
@@ -97,7 +109,7 @@ class EnvironmentService {
   }
   getS3Config() {
     if (
-      !this.config.AWS_S3_BUCKET ||
+      !this.config.MEDIA_BUCKET_NAME ||
       !this.config.AWS_ACCESS_KEY_ID ||
       !this.config.AWS_SECRET_ACCESS_KEY
     ) {
@@ -105,7 +117,7 @@ class EnvironmentService {
     }
 
     return {
-      bucket: this.config.AWS_S3_BUCKET,
+      bucket: this.config.MEDIA_BUCKET_NAME,
       accessKeyId: this.config.AWS_ACCESS_KEY_ID,
       secretAccessKey: this.config.AWS_SECRET_ACCESS_KEY,
       region: this.config.AWS_REGION,
