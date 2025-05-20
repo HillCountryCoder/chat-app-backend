@@ -5,8 +5,17 @@ import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as s3n from "aws-cdk-lib/aws-s3-notifications";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as ssm from "aws-cdk-lib/aws-ssm";
+import * as crypto from "crypto";
 import { Construct } from "constructs";
 import { Stage } from "../stage";
+import { Duration } from "aws-cdk-lib";
 
 export interface ChatBackendStackProps extends cdk.StackProps {
   stage: Stage;
@@ -16,6 +25,9 @@ export class ChatBackendStack extends cdk.Stack {
   public readonly ecsService: ecs.FargateService;
   public readonly ecrRepository: ecr.Repository;
   public readonly networkLoadBalancer: elbv2.NetworkLoadBalancer;
+  public readonly mediaBucket: s3.Bucket;
+  public readonly thumbnailBucket: s3.Bucket;
+  public readonly mediaDistribution: cloudfront.Distribution;
 
   constructor(scope: Construct, id: string, props: ChatBackendStackProps) {
     super(scope, id, props);
@@ -24,8 +36,8 @@ export class ChatBackendStack extends cdk.Stack {
 
     // Create a VPC - COST REDUCTION: Single AZ, no NAT Gateways
     const vpc = new ec2.Vpc(this, "ChatBackendVPC", {
-      maxAzs: 1, // COST REDUCTION: Using only one AZ
-      natGateways: 0, // No NAT Gateways
+      maxAzs: 1,
+      natGateways: 0,
       subnetConfiguration: [
         {
           name: "public",
@@ -34,10 +46,11 @@ export class ChatBackendStack extends cdk.Stack {
       ],
       vpcName: `chat-backend-vpc-${props.stage}`,
     });
+
     // Create an ECS cluster
     const cluster = new ecs.Cluster(this, "ChatBackendCluster", {
       vpc,
-      containerInsights: false, // COST REDUCTION: Disable Container Insights
+      containerInsights: false,
       clusterName: `chat-backend-cluster-${props.stage}`,
     });
 
@@ -50,11 +63,152 @@ export class ChatBackendStack extends cdk.Stack {
       emptyOnDelete: !isProduction,
       lifecycleRules: [
         {
-          maxImageCount: isProduction ? 10 : 3, // COST REDUCTION: Keep fewer images
+          maxImageCount: isProduction ? 10 : 3,
           description: "keep only recent images",
         },
       ],
     });
+
+    // Create S3 bucket for media uploads
+    this.mediaBucket = new s3.Bucket(this, "MediaBucket", {
+      bucketName: `chat-media-${props.stage}-${this.account}`,
+      cors: [
+        {
+          allowedMethods: [
+            s3.HttpMethods.GET,
+            s3.HttpMethods.PUT,
+            s3.HttpMethods.POST,
+            s3.HttpMethods.HEAD,
+          ],
+          allowedOrigins: ["*"],
+          allowedHeaders: ["*"],
+          exposedHeaders: ["ETag"],
+        },
+      ],
+      lifecycleRules: [
+        {
+          prefix: "quarantine/",
+          expiration: Duration.days(7),
+        },
+      ],
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: isProduction
+        ? cdk.RemovalPolicy.RETAIN
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Create S3 bucket for thumbnails
+    this.thumbnailBucket = new s3.Bucket(this, "ThumbnailBucket", {
+      bucketName: `chat-thumbnails-${props.stage}-${this.account}`,
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
+          allowedOrigins: ["*"],
+          allowedHeaders: ["*"],
+        },
+      ],
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: isProduction
+        ? cdk.RemovalPolicy.RETAIN
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Create CloudFront distribution for media delivery
+
+    const oacMediaBucket = new cloudfront.S3OriginAccessControl(
+      this,
+      "ChatMediaOAC",
+      {
+        signing: cloudfront.Signing.SIGV4_ALWAYS,
+        originAccessControlName: "ChatMediaBucketOAC",
+      },
+    );
+
+    const oacThumbnailBucket = new cloudfront.S3OriginAccessControl(
+      this,
+      "ChatThumbnailOAC",
+      {
+        signing: cloudfront.Signing.SIGV4_ALWAYS,
+        originAccessControlName: "ChatThumbnailBucketOAC",
+      },
+    );
+    this.mediaDistribution = new cloudfront.Distribution(this, "ChatMediaCDN", {
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(
+          this.mediaBucket,
+          {
+            originAccessControl: oacMediaBucket,
+          },
+        ),
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      },
+      additionalBehaviors: {
+        "/thumbnails/*": {
+          origin: origins.S3BucketOrigin.withOriginAccessControl(
+            this.thumbnailBucket,
+            {
+              originAccessControl: oacThumbnailBucket,
+            },
+          ),
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        },
+      },
+    });
+
+    // Create Lambda for virus scanning
+    const virusScanLambda = new lambda.Function(this, "VirusScanner", {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset("lambda/virus-scanner"),
+      timeout: Duration.minutes(2),
+      memorySize: 512,
+      environment: {
+        MEDIA_BUCKET_NAME: this.mediaBucket.bucketName,
+        API_ENDPOINT: `https://api.hillcountrycoders10.com`,
+        API_KEY: process.env.API_KEY || "",
+      },
+    });
+
+    const apiKeyValue =
+      process.env.API_KEY || crypto.randomBytes(24).toString("hex"); // 48-char hex string
+
+    // Store in SSM Parameter Store for persistent access
+    const apiKeyParam = new ssm.StringParameter(this, "ChatApiKeyParameter", {
+      parameterName: `/chat-app/${props.stage}/api-key`,
+      stringValue: apiKeyValue,
+      tier: ssm.ParameterTier.STANDARD,
+      description: "API key for Lambda-backend communication",
+    });
+
+    // Grant Lambda read access to the parameter
+    apiKeyParam.grantRead(virusScanLambda);
+
+    // Update Lambda environment to use SSM parameter reference
+    virusScanLambda.addEnvironment(
+      "API_KEY_PARAMETER_NAME",
+      apiKeyParam.parameterName,
+    );
+
+    // Add S3 notification to trigger virus scanner Lambda
+    this.mediaBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(virusScanLambda),
+    );
+
+    // Grant permissions to the virus scanner
+    this.mediaBucket.grantRead(virusScanLambda);
+
+    // Grant additional permissions to move files to quarantine
+    virusScanLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["s3:PutObject", "s3:DeleteObject"],
+        resources: [
+          `${this.mediaBucket.bucketArn}/*`,
+          `${this.mediaBucket.bucketArn}/quarantine/*`,
+        ],
+      }),
+    );
 
     // Reference existing secrets instead of creating new ones
     const mongoDbSecret = secretsmanager.Secret.fromSecretNameV2(
@@ -73,8 +227,8 @@ export class ChatBackendStack extends cdk.Stack {
     if (process.env.SKIP_FARGATE !== "true") {
       // Create a task definition
       const taskDefinition = new ecs.FargateTaskDefinition(this, "TaskDef", {
-        memoryLimitMiB: 512, // Minimum viable memory
-        cpu: 256, // Minimum viable CPU
+        memoryLimitMiB: 512,
+        cpu: 256,
       });
 
       // Add container to task definition
@@ -88,7 +242,13 @@ export class ChatBackendStack extends cdk.Stack {
           PORT: "5000",
           JWT_SECRET: "itsasecretansakdbaskjdbaskjdbaskdbaskdbsakdsdaks",
           JWT_EXPIRES_IN: "1d",
-          CORS_ORIGIN: "https://chat-app-frontend-one-coral.vercel.app,http://localhost:3000", // Add CORS setting
+          CORS_ORIGIN:
+            "https://chat-app-frontend-one-coral.vercel.app,http://localhost:3000",
+          // Add media environment variables
+          MEDIA_BUCKET_NAME: this.mediaBucket.bucketName,
+          THUMBNAIL_BUCKET_NAME: this.thumbnailBucket.bucketName,
+          CDN_DOMAIN: this.mediaDistribution.distributionDomainName,
+          AWS_REGION: this.region,
         },
         secrets: {
           MONGODB_URI: ecs.Secret.fromSecretsManager(mongoDbSecret, "url"),
@@ -122,11 +282,10 @@ export class ChatBackendStack extends cdk.Stack {
       this.ecsService = new ecs.FargateService(this, "ChatBackendService", {
         cluster,
         taskDefinition,
-        assignPublicIp: true, // Required for public subnets without NAT
-        desiredCount: 1, // Single task
+        assignPublicIp: true,
+        desiredCount: 1,
         serviceName: `chat-backend-service-${props.stage}`,
         securityGroups: [serviceSG],
-        // COST REDUCTION: Using Fargate Spot for ~70% cost savings
         capacityProviderStrategies: [
           {
             capacityProvider: "FARGATE_SPOT",
@@ -134,6 +293,10 @@ export class ChatBackendStack extends cdk.Stack {
           },
         ],
       });
+
+      // Grant S3 permissions to ECS task
+      this.mediaBucket.grantReadWrite(this.ecsService.taskDefinition.taskRole);
+      this.thumbnailBucket.grantRead(this.ecsService.taskDefinition.taskRole);
 
       // Create a Network Load Balancer
       this.networkLoadBalancer = new elbv2.NetworkLoadBalancer(
@@ -143,7 +306,6 @@ export class ChatBackendStack extends cdk.Stack {
           vpc,
           internetFacing: true,
           loadBalancerName: `chat-backend-nlb-${props.stage}`,
-          // COST REDUCTION: Deploy in same AZ as the service
           vpcSubnets: { subnets: vpc.publicSubnets },
         },
       );
@@ -159,7 +321,7 @@ export class ChatBackendStack extends cdk.Stack {
           port: "5000",
           protocol: elbv2.Protocol.HTTP,
           path: "/health",
-          interval: cdk.Duration.seconds(60), // Reduced frequency
+          interval: cdk.Duration.seconds(60),
           healthyThresholdCount: 2,
           unhealthyThresholdCount: 2,
         },
@@ -174,8 +336,6 @@ export class ChatBackendStack extends cdk.Stack {
         protocol: elbv2.Protocol.TCP,
         defaultTargetGroups: [targetGroup],
       });
-
-      // If you have an ACM certificate, uncomment this to add HTTPS
 
       // Import your ACM certificate (already created in ACM)
       const certificate = acm.Certificate.fromCertificateArn(
@@ -221,6 +381,25 @@ export class ChatBackendStack extends cdk.Stack {
       value: this.ecrRepository.repositoryUri,
       description: `ECR Repository URI ${appName}`,
       exportName: `ECRRepository${appName}URI-${props.stage}`,
+    });
+
+    // Media infrastructure outputs
+    new cdk.CfnOutput(this, "MediaBucketName", {
+      value: this.mediaBucket.bucketName,
+      description: "Media bucket name",
+      exportName: `MediaBucket-${props.stage}`,
+    });
+
+    new cdk.CfnOutput(this, "ThumbnailBucketName", {
+      value: this.thumbnailBucket.bucketName,
+      description: "Thumbnail bucket name",
+      exportName: `ThumbnailBucket-${props.stage}`,
+    });
+
+    new cdk.CfnOutput(this, "CDNDomain", {
+      value: this.mediaDistribution.distributionDomainName,
+      description: "CloudFront distribution domain name",
+      exportName: `CDNDomain-${props.stage}`,
     });
   }
 }
