@@ -16,11 +16,27 @@ import * as crypto from "crypto";
 import { Construct } from "constructs";
 import { Stage } from "../stage";
 import { Duration } from "aws-cdk-lib";
-
+import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 export interface ChatBackendStackProps extends cdk.StackProps {
   stage: Stage;
 }
-
+async function getExistingParameter(paramName: string): Promise<string | null> {
+  const ssmClient = new SSMClient({
+    region: process.env.CDK_DEFAULT_REGION || "us-east-1",
+  });
+  try {
+    const response = await ssmClient.send(
+      new GetParameterCommand({
+        Name: paramName,
+        WithDecryption: true,
+      }),
+    );
+    return response.Parameter?.Value || null;
+  } catch (error) {
+    // Parameter doesn't exist or other error
+    return null;
+  }
+}
 export class ChatBackendStack extends cdk.Stack {
   public readonly ecsService: ecs.FargateService;
   public readonly ecrRepository: ecr.Repository;
@@ -156,6 +172,30 @@ export class ChatBackendStack extends cdk.Stack {
       },
     });
 
+    const apiKeyParamName = `/chat-app/${props.stage}/api-key`;
+
+    // Check for existing parameter in SSM (for redeployments)
+    let apiKeyValue = process.env.API_KEY || "";
+    if (!apiKeyValue) {
+      apiKeyValue = crypto.randomBytes(24).toString("hex");
+
+      getExistingParameter(apiKeyParamName)
+        .then((existingKey) => {
+          if (existingKey) {
+            apiKeyValue = existingKey;
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Store in SSM Parameter Store for persistent access
+    const apiKeyParam = new ssm.StringParameter(this, "ChatApiKeyParameter", {
+      parameterName: apiKeyParamName,
+      stringValue: apiKeyValue,
+      tier: ssm.ParameterTier.STANDARD,
+      description: "API key for Lambda-backend communication",
+    });
+
     // Create Lambda for virus scanning
     const virusScanLambda = new lambda.Function(this, "VirusScanner", {
       runtime: lambda.Runtime.NODEJS_18_X,
@@ -166,29 +206,11 @@ export class ChatBackendStack extends cdk.Stack {
       environment: {
         MEDIA_BUCKET_NAME: this.mediaBucket.bucketName,
         API_ENDPOINT: `https://api.hillcountrycoders10.com`,
-        API_KEY: process.env.API_KEY || "",
+        API_KEY_PARAMETER_NAME: apiKeyParamName, // Use parameter name instead of raw value
       },
     });
-
-    const apiKeyValue =
-      process.env.API_KEY || crypto.randomBytes(24).toString("hex"); // 48-char hex string
-
-    // Store in SSM Parameter Store for persistent access
-    const apiKeyParam = new ssm.StringParameter(this, "ChatApiKeyParameter", {
-      parameterName: `/chat-app/${props.stage}/api-key`,
-      stringValue: apiKeyValue,
-      tier: ssm.ParameterTier.STANDARD,
-      description: "API key for Lambda-backend communication",
-    });
-
     // Grant Lambda read access to the parameter
     apiKeyParam.grantRead(virusScanLambda);
-
-    // Update Lambda environment to use SSM parameter reference
-    virusScanLambda.addEnvironment(
-      "API_KEY_PARAMETER_NAME",
-      apiKeyParam.parameterName,
-    );
 
     // Add S3 notification to trigger virus scanner Lambda
     this.mediaBucket.addEventNotification(
