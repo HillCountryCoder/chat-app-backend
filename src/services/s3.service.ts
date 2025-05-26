@@ -11,9 +11,11 @@ import { env } from "../common/environment";
 import { BadRequestError } from "../common/errors";
 
 const logger = createLogger("s3-service");
+
 export class S3Service {
   private static instance: S3Service;
   private s3Client: S3Client;
+
   private constructor() {
     this.s3Client = new S3Client({
       region: env.AWS_REGION || "us-east-1",
@@ -39,13 +41,20 @@ export class S3Service {
     fileName: string;
     fileType: string;
     fileSize: number;
+    hasClientThumbnail?: boolean;
   }): Promise<{
     presignedUrl: string;
     key: string;
     bucket: string;
     cdnUrl: string;
+    thumbnailUpload?: {
+      presignedUrl: string;
+      key: string;
+      bucket: string;
+      cdnUrl: string;
+    };
   }> {
-    const { userId, fileName, fileType, fileSize } = params;
+    const { userId, fileName, fileType, fileSize, hasClientThumbnail } = params;
 
     // Validate input
     if (!fileName || !fileType) {
@@ -63,42 +72,97 @@ export class S3Service {
     const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
     const key = `users/${userId}/${randomId}/${sanitizedFileName}`;
 
-    const bucket = env.MEDIA_BUCKET_NAME || "";
-    if (!bucket) {
+    const mediaBucket = env.MEDIA_BUCKET_NAME;
+    if (!mediaBucket) {
       throw new Error("MEDIA_BUCKET_NAME environment variable is not set");
     }
 
-    // Generate pre-signed URL for upload
-    const command = new PutObjectCommand({
-      Bucket: bucket,
+    // Generate pre-signed URL for main file upload
+    const mainUploadCommand = new PutObjectCommand({
+      Bucket: mediaBucket,
       Key: key,
       ContentType: fileType,
     });
 
-    const presignedUrl = await getSignedUrl(this.s3Client, command, {
+    const presignedUrl = await getSignedUrl(this.s3Client, mainUploadCommand, {
       expiresIn: 900, // 15 minutes
     });
 
-    // Generate CDN URL
+    // Generate CDN URL for main file
     const cdnUrl = env.CDN_DOMAIN
       ? `https://${env.CDN_DOMAIN}/${key}`
-      : `https://${bucket}.s3.${
+      : `https://${mediaBucket}.s3.${
           env.AWS_REGION || "us-east-1"
         }.amazonaws.com/${key}`;
 
-    logger.info("Generated upload URL", {
+    const result: {
+      presignedUrl: string;
+      key: string;
+      bucket: string;
+      cdnUrl: string;
+      thumbnailUpload?: {
+        presignedUrl: string;
+        key: string;
+        bucket: string;
+        cdnUrl: string;
+      };
+    } = {
+      presignedUrl,
+      key,
+      bucket: mediaBucket,
+      cdnUrl,
+    };
+
+    // Generate thumbnail upload URL if client will upload thumbnail
+    if (hasClientThumbnail && this.isImageOrVideo(fileType)) {
+      const thumbnailBucket = env.THUMBNAIL_BUCKET_NAME;
+      if (!thumbnailBucket) {
+        logger.warn(
+          "THUMBNAIL_BUCKET_NAME not configured, skipping thumbnail upload URL",
+        );
+      } else {
+        const thumbnailKey = `users/${userId}/${randomId}/thumb_${sanitizedFileName.replace(
+          /\.[^.]+$/,
+          ".jpg",
+        )}`;
+
+        const thumbnailUploadCommand = new PutObjectCommand({
+          Bucket: thumbnailBucket,
+          Key: thumbnailKey,
+          ContentType: "image/jpeg",
+        });
+
+        const thumbnailPresignedUrl = await getSignedUrl(
+          this.s3Client,
+          thumbnailUploadCommand,
+          { expiresIn: 900 },
+        );
+
+        const thumbnailCdnUrl = env.CDN_DOMAIN
+          ? `https://${env.CDN_DOMAIN}/thumbnails/${thumbnailKey}`
+          : `https://${thumbnailBucket}.s3.${
+              env.AWS_REGION || "us-east-1"
+            }.amazonaws.com/${thumbnailKey}`;
+
+        result.thumbnailUpload = {
+          presignedUrl: thumbnailPresignedUrl,
+          key: thumbnailKey,
+          bucket: thumbnailBucket,
+          cdnUrl: thumbnailCdnUrl,
+        };
+      }
+    }
+
+    logger.info("Generated upload URL(s)", {
       userId,
       key,
       fileType,
+      hasThumbnailUpload: !!result.thumbnailUpload,
     });
 
-    return {
-      presignedUrl,
-      key,
-      bucket,
-      cdnUrl,
-    };
+    return result;
   }
+
   async generateDownloadUrl(bucket: string, key: string): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: bucket,
@@ -123,6 +187,10 @@ export class S3Service {
     await this.s3Client.send(command);
 
     logger.info("Deleted file", { bucket, key });
+  }
+
+  private isImageOrVideo(mimeType: string): boolean {
+    return mimeType.startsWith("image/") || mimeType.startsWith("video/");
   }
 }
 

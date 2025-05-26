@@ -33,6 +33,8 @@ export interface MessageInterface extends Document {
   reactions: Reaction[];
   attachments: mongoose.Types.ObjectId[];
   replyToId?: mongoose.Types.ObjectId;
+  hasMedia: boolean;
+  totalAttachmentSize?: number;
   createdAt: Date;
   editedAt?: Date;
   isEdited: boolean;
@@ -106,6 +108,15 @@ const messageSchema = new Schema<MessageInterface>(
         ref: "Attachment",
       },
     ],
+    hasMedia: {
+      type: Boolean,
+      default: false,
+      index: true, // Index for performance
+    },
+    totalAttachmentSize: {
+      type: Number,
+      min: 0,
+    },
     replyToId: {
       type: Schema.Types.ObjectId,
       ref: "Message",
@@ -142,11 +153,24 @@ messageSchema.pre(["find", "findOne", "findOneAndUpdate"], function () {
   });
 });
 
+messageSchema.pre("save", function (next) {
+  this.hasMedia = this.attachments && this.attachments.length > 0;
+  if (this.hasMedia) {
+    this.totalAttachmentSize = undefined;
+  }
+  next();
+});
+
 messageSchema.pre("validate", function (next) {
   const hasChannel = !!this.channelId;
   const hasDirect = !!this.directMessageId;
   const hasThread = !!this.threadId;
+  // A message can be in ONE of the following:
+  // 1. A channel (main channel message)
+  // 2. A direct message
+  // 3. A thread (which is associated with a channel via the Thread model)
 
+  // Exactly one of these must be defined
   const validContextCount = [hasChannel, hasDirect, hasThread].filter(
     Boolean,
   ).length;
@@ -171,7 +195,9 @@ messageSchema.index({ isThreadStarter: 1 });
 messageSchema.index({ "mentions.userId": 1 });
 messageSchema.index({ isPinned: 1 });
 messageSchema.index({ replyToId: 1 });
-
+messageSchema.index({ hasMedia: 1, createdAt: -1 });
+messageSchema.index({ channelId: 1, hasMedia: 1, createdAt: -1 });
+messageSchema.index({ directMessageId: 1, hasMedia: 1, createdAt: -1 });
 export const Message = mongoose.model<MessageInterface>(
   "Message",
   messageSchema,
