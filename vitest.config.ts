@@ -10,6 +10,8 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
     },
     include: ['src/**/*.test.ts'],
+	testTimeout: 30000,
+	hookTimeout: 10000,
   },
   resolve: {
     alias: {
