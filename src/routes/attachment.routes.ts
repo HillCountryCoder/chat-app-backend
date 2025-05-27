@@ -12,13 +12,18 @@ router.post(
   AttachmentController.updateStatus,
 );
 
-// Protected routes (authentication required)
-router.use(authMiddleware);
-
-router.post("/upload-url", AttachmentController.generateUploadUrl);
-router.post("/complete", AttachmentController.completeUpload);
-router.get("/:id/download", AttachmentController.getDownloadUrl);
-router.delete("/:id", AttachmentController.deleteAttachment);
-router.get("/user/attachments", AttachmentController.getUserAttachments);
+router.post(
+  "/upload-url",
+  authMiddleware,
+  AttachmentController.generateUploadUrl,
+);
+router.post("/complete", authMiddleware, AttachmentController.completeUpload);
+router.get(
+  "/:id/download",
+  authMiddleware,
+  AttachmentController.getDownloadUrl,
+);
+router.delete("/:id", authMiddleware, AttachmentController.deleteAttachment);
+router.get("/", authMiddleware, AttachmentController.getUserAttachments);
 
 export default router;

@@ -15,10 +15,8 @@ const uploadUrlSchema = z.object({
     .regex(
       /^[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.]*$/,
     ),
-  fileSize: z
-    .number()
-    .positive()
-    .max(25 * 1024 * 1024), // 25MB limit
+  fileSize: z.number().positive(),
+  hasClientThumbnail: z.boolean().optional(),
 });
 
 const completeUploadSchema = z.object({

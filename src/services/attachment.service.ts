@@ -12,7 +12,7 @@ const logger = createLogger("attachment-service");
 
 export class AttachmentService {
   private static instance: AttachmentService;
-
+  private static readonly MAX_FILE_SIZE = 1024 * 1024 * 25; // 25mb
   private constructor() {}
 
   static getInstance(): AttachmentService {
@@ -36,7 +36,13 @@ export class AttachmentService {
     if (!user) {
       throw new NotFoundError("user");
     }
-
+    if (fileSize > AttachmentService.MAX_FILE_SIZE) {
+      throw new BadRequestError(
+        `File size exceeds maximum limit of ${
+          AttachmentService.MAX_FILE_SIZE / (1024 * 1024)
+        } MB`,
+      );
+    }
     // Check user storage quota (1GB default)
     const userStorageLimit = 1024 * 1024 * 1024; // 1GB
     const currentUsage = await attachmentRepository.getTotalSizeByUser(userId);
