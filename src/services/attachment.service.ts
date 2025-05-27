@@ -141,6 +141,7 @@ export class AttachmentService {
     fileKey: string;
     status: "uploading" | "processing" | "ready" | "failed";
     errorDetails?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     metadata?: any;
   }) {
     const { fileKey, status, errorDetails, metadata } = data;

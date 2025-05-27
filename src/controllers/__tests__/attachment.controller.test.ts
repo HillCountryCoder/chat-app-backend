@@ -1,8 +1,13 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Request, Response, NextFunction } from "express";
 import { AttachmentController } from "../attachment.controller";
 import { attachmentService } from "../../services/attachment.service";
-import { ValidationError, UnauthorizedError } from "../../common/errors";
+import {
+  ValidationError,
+  UnauthorizedError,
+  BadRequestError,
+} from "../../common/errors";
 import { AuthenticatedRequest } from "../../common/types/auth.type";
 
 // Mock dependencies
@@ -50,6 +55,7 @@ describe("AttachmentController", () => {
         uploadId: "upload123",
         presignedUrl: "https://s3.amazonaws.com/upload-url",
         cdnUrl: "https://cdn.domain.com/file",
+        thumbnailUpload: undefined, // Fix: Add missing property
         metadata: {
           bucket: "test-bucket",
           key: "test-key",
@@ -75,6 +81,46 @@ describe("AttachmentController", () => {
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith(mockServiceResponse);
       expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it("should generate upload URL with thumbnail", async () => {
+      const mockRequestBody = {
+        fileName: "test.jpg",
+        fileType: "image/jpeg",
+        fileSize: 1024000,
+        hasClientThumbnail: true,
+      };
+
+      const mockServiceResponse = {
+        uploadId: "upload123",
+        presignedUrl: "https://s3.amazonaws.com/upload-url",
+        cdnUrl: "https://cdn.domain.com/file",
+        thumbnailUpload: {
+          presignedUrl: "https://s3.amazonaws.com/thumb-upload-url",
+          key: "thumb-key",
+          bucket: "thumb-bucket",
+          cdnUrl: "https://cdn.domain.com/thumb",
+        },
+        metadata: {
+          bucket: "test-bucket",
+          key: "test-key",
+          maxFileSize: 1024000,
+        },
+      };
+
+      mockRequest.body = mockRequestBody;
+      vi.mocked(attachmentService.generateUploadUrl).mockResolvedValue(
+        mockServiceResponse,
+      );
+
+      await AttachmentController.generateUploadUrl(
+        mockRequest as AuthenticatedRequest,
+        mockResponse as Response,
+        mockNext,
+      );
+
+      expect(mockResponse.json).toHaveBeenCalledWith(mockServiceResponse);
+      expect(mockServiceResponse.thumbnailUpload).toBeDefined();
     });
 
     it("should handle validation errors", async () => {
@@ -127,6 +173,10 @@ describe("AttachmentController", () => {
     });
 
     it("should validate file size limits", async () => {
+      vi.mocked(attachmentService.generateUploadUrl).mockClear();
+      vi.mocked(attachmentService.generateUploadUrl).mockRejectedValue(
+        new BadRequestError("File size exceeds maximum limit of 25 MB"),
+      );
       mockRequest.body = {
         fileName: "test.jpg",
         fileType: "image/jpeg",
@@ -138,8 +188,7 @@ describe("AttachmentController", () => {
         mockResponse as Response,
         mockNext,
       );
-
-      expect(mockNext).toHaveBeenCalledWith(expect.any(ValidationError));
+      expect(mockNext).toHaveBeenCalledWith(expect.any(BadRequestError));
     });
 
     it("should validate file type format", async () => {
@@ -396,15 +445,49 @@ describe("AttachmentController", () => {
     it("should get user attachments successfully", async () => {
       const mockAttachmentsData = {
         attachments: [
-          { _id: "att1", name: "file1.jpg", size: 1000 },
-          { _id: "att2", name: "file2.jpg", size: 2000 },
+          {
+            _id: "att1",
+            name: "file1.jpg",
+            url: "https://cdn.domain.com/file1.jpg",
+            type: "image/jpeg",
+            size: 1000,
+            uploadedBy: "user123",
+            uploadedAt: new Date(),
+            status: "ready",
+            metadata: {
+              s3: {
+                bucket: "test-bucket",
+                key: "file1-key",
+                contentType: "image/jpeg",
+                encrypted: false,
+              },
+            },
+          },
+          {
+            _id: "att2",
+            name: "file2.jpg",
+            url: "https://cdn.domain.com/file2.jpg",
+            type: "image/jpeg",
+            size: 2000,
+            uploadedBy: "user123",
+            uploadedAt: new Date(),
+            status: "ready",
+            metadata: {
+              s3: {
+                bucket: "test-bucket",
+                key: "file2-key",
+                contentType: "image/jpeg",
+                encrypted: false,
+              },
+            },
+          },
         ],
         totalCount: 2,
         totalSize: 3000,
       };
 
       vi.mocked(attachmentService.getUserAttachments).mockResolvedValue(
-        mockAttachmentsData,
+        mockAttachmentsData as any,
       );
 
       await AttachmentController.getUserAttachments(

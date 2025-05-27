@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import mongoose from "mongoose";
 import { AttachmentInterface, Attachment, AttachmentMetadata } from "../models";
 import { BaseRepository } from "./base.repository";
@@ -47,7 +48,7 @@ export class AttachmentRepository extends BaseRepository<AttachmentInterface> {
     return this.model.findOneAndUpdate(
       { "metadata.s3.key": s3Key },
       updateData,
-      { new: true },
+      { new: true, lean: true },
     );
   }
 

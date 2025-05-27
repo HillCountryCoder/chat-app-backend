@@ -1,4 +1,3 @@
-// src/repositories/__tests__/attachment.repository.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import mongoose from "mongoose";
 import { AttachmentRepository } from "../attachment.repository";
@@ -235,22 +234,21 @@ describe("AttachmentRepository", () => {
       const result = await attachmentRepository.updateStatus(
         testS3Key,
         "ready",
-        newMetadata,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        newMetadata as any,
       );
-
+      console.log(result);
       expect(result).not.toBeNull();
       expect(result!.status).toBe("ready");
-      expect(result!.metadata.thumbnail?.toObject()).toEqual(
-        newMetadata.thumbnail,
-      );
-      expect(result!.metadata.compression?.toObject()).toEqual(
-        newMetadata.compression,
-      );
+      expect(result!.metadata.thumbnail).toEqual(newMetadata.thumbnail);
+      expect(result!.metadata.compression).toEqual(newMetadata.compression);
 
       // Verify in database
-      const updatedAttachment = await Attachment.findById(testAttachment._id);
+      const updatedAttachment = await Attachment.findById(
+        testAttachment._id,
+      ).lean();
       expect(updatedAttachment!.status).toBe("ready");
-      expect(updatedAttachment!.metadata.thumbnail?.toObject()).toEqual(
+      expect(updatedAttachment!.metadata.thumbnail).toEqual(
         newMetadata.thumbnail,
       );
     });

@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import crypto from "crypto";
 import { Attachment } from "../../models";
-import mongoose from "mongoose";
 
 export interface TestFileData {
   fileName: string;
@@ -209,29 +209,27 @@ export class AttachmentTestHelper {
         encrypted: false,
         eTag: options.eTag,
       },
+      ...(options.thumbnail && {
+        thumbnail: {
+          s3Key: key.replace(/\.[^.]+$/, "_thumb.jpg"),
+          url: `https://cdn.domain.com/thumbnails/${key.replace(
+            /\.[^.]+$/,
+            "_thumb.jpg",
+          )}`,
+          width: 320,
+          height: 240,
+          ...options.thumbnail,
+        },
+      }),
+      ...(options.compression && {
+        compression: {
+          algorithm: "webp" as const,
+          quality: 85,
+          compressionRatio: 0.75,
+          ...options.compression,
+        },
+      }),
     };
-
-    if (options.thumbnail) {
-      baseMetadata.thumbnail = {
-        s3Key: key.replace(/\.[^.]+$/, "_thumb.jpg"),
-        url: `https://cdn.domain.com/thumbnails/${key.replace(
-          /\.[^.]+$/,
-          "_thumb.jpg",
-        )}`,
-        width: 320,
-        height: 240,
-        ...options.thumbnail,
-      };
-    }
-
-    if (options.compression) {
-      baseMetadata.compression = {
-        algorithm: "webp",
-        quality: 85,
-        compressionRatio: 0.75,
-        ...options.compression,
-      };
-    }
 
     return baseMetadata;
   }
