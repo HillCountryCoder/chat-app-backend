@@ -22,7 +22,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-	"generate-api-key": "node scripts/generate-api-key.js"
+	"generate-api-key": "node scripts/generate-api-key.js",
+	"migrate:phase2": "ts-node scripts/migrate-phase2.ts"
   },
   "keywords": [
     "chat",
