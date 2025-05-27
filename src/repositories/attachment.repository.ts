@@ -1,8 +1,5 @@
-import {
-  AttachmentInterface,
-  Attachment,
-  AttachmentMetadata,
-} from "../models";
+import mongoose from "mongoose";
+import { AttachmentInterface, Attachment, AttachmentMetadata } from "../models";
 import { BaseRepository } from "./base.repository";
 
 export class AttachmentRepository extends BaseRepository<AttachmentInterface> {
@@ -56,7 +53,12 @@ export class AttachmentRepository extends BaseRepository<AttachmentInterface> {
 
   async getTotalSizeByUser(userId: string): Promise<number> {
     const result = await this.model.aggregate([
-      { $match: { uploadedBy: userId, status: "ready" } },
+      {
+        $match: {
+          uploadedBy: new mongoose.Types.ObjectId(userId),
+          status: "ready",
+        },
+      },
       { $group: { _id: null, totalSize: { $sum: "$size" } } },
     ]);
 
