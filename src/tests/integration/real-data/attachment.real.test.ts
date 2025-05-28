@@ -244,9 +244,11 @@ describe.skipIf(!shouldRunRealTests)("Real AWS Integration Tests", () => {
           }),
         );
         expect.fail("File should have been deleted from S3");
-      } catch (error: any) {
-        expect(error.name).toBe("NoSuchKey");
-        console.log(`✅ File confirmed deleted from S3`);
+      } catch (error) {
+        if (error instanceof Error) {
+          expect(error.name).toBe("NoSuchKey");
+          console.log(`✅ File confirmed deleted from S3`);
+        }
       }
 
       // Remove from cleanup list since it's already deleted
@@ -480,6 +482,7 @@ describe.skipIf(!shouldRunRealTests)("Real AWS Integration Tests", () => {
           }
         } catch (error) {
           // CDN might not be ready yet
+          console.log(`❌ CDN access failed: ${error}`);
         }
 
         if (!cdnAccessible) {
