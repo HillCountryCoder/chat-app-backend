@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { UserInterface as User, User as UserModel } from "../models";
 import { BaseRepository } from "./base.repository";
 
@@ -82,6 +83,16 @@ export class UserRepository extends BaseRepository<User> {
     }
 
     return this.model.countDocuments(query);
+  }
+
+  async findByIds(userIds: string[]): Promise<User[]> {
+    if (!userIds || userIds.length === 0) {
+      return [];
+    }
+    return this.model
+      .find({ _id: { $in: userIds } })
+      .select("-passwordHash") // Exclude password hash
+      .sort({ displayName: 1 });
   }
 }
 

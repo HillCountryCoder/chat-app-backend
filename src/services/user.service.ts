@@ -1,7 +1,7 @@
 // src/services/user.service.ts
 import { createLogger } from "../common/logger";
 import winston from "winston";
-import { UserInterface as User, UserStatus } from "../models";
+import { UserInterface as User, UserInterface, UserStatus } from "../models";
 import {
   ConflictError,
   NotFoundError,
@@ -172,6 +172,34 @@ export class UserService {
       limit,
       totalPages,
     };
+  }
+
+  async checkIfUserExists(userId: string): Promise<UserInterface> {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundError("user");
+    }
+    return user;
+  }
+
+  async checkIfUsersExists(userIds: string[]): Promise<UserInterface[]> {
+    if (!userIds || userIds.length === 0) {
+      return [];
+    }
+    const users = await userRepository.findByIds(userIds);
+    if (!users || users.length === 0) {
+      throw new NotFoundError("users");
+    }
+
+    // Check if all userIds are found
+    const notFoundIds = userIds.filter(
+      (id) => !users.some((user) => user._id.toString() === id),
+    );
+    if (notFoundIds.length > 0) {
+      throw new NotFoundError(`users with IDs: ${notFoundIds.join(", ")}`);
+    }
+
+    return users;
   }
 }
 

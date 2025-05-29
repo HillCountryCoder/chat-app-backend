@@ -1,0 +1,3 @@
+export const MAX_MESSAGE_SIZE = 100 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+export const MAX_TOTAL_MESSAGE_SIZE = 100 * 1024 * 1024; // 100MB

@@ -96,6 +96,7 @@ class EnvironmentService {
     return this.config;
   }
   getMongoDBOptions() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const options: any = {};
 
     if (this.config.MONGODB_USER && this.config.MONGODB_PASSWORD) {
