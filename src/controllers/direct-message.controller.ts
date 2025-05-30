@@ -1,5 +1,4 @@
-// src/controllers/direct-message.controller.ts
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../common/types/auth.type";
 import { directMessageService } from "../services/direct-message.service";
 import { createLogger } from "../common/logger";

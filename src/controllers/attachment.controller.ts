@@ -4,6 +4,8 @@ import { attachmentService } from "../services/attachment.service";
 import { createLogger } from "../common/logger";
 import { ValidationError, UnauthorizedError } from "../common/errors";
 import { z } from "zod";
+import { emitAttachmentStatusUpdate } from "../socket/attachment.handler";
+import { getSocketServer } from "../socket";
 
 const logger = createLogger("attachment-controller");
 
@@ -157,6 +159,23 @@ export class AttachmentController {
         status: validatedData.status,
         source: validatedData.source || "unknown",
       });
+
+      const socketServer = getSocketServer();
+      if (socketServer) {
+        emitAttachmentStatusUpdate(
+          socketServer,
+          attachment._id.toString(),
+          attachment.uploadedBy.toString(),
+          {
+            status: validatedData.status,
+            errorDetails: validatedData.errorDetails,
+            metadata: validatedData.metadata,
+            url: attachment.url,
+            name: attachment.name,
+            size: attachment.size,
+          },
+        );
+      }
 
       res.status(200).json({
         success: true,
