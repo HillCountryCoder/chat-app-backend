@@ -21,7 +21,6 @@ vi.mock("../../../services/unread-messages.service", () => ({
 describe("Direct Messaging Integration Tests", () => {
   const app = createTestApp();
   let authToken1: string;
-  let authToken2: string;
   let userId1: string;
   let userId2: string;
   let directMessageId: string;
@@ -49,12 +48,10 @@ describe("Direct Messaging Integration Tests", () => {
 
     userId2 = user2._id.toString();
 
-    const loginResponse2 = await request(app).post("/api/auth/login").send({
+    await request(app).post("/api/auth/login").send({
       identifier: "user2@example.com",
       password: "Password123!",
     });
-
-    authToken2 = loginResponse2.body.token;
   });
 
   describe("Create Direct Message", () => {
@@ -176,7 +173,7 @@ describe("Direct Messaging Integration Tests", () => {
 
     it("should prevent unauthorized access to messages", async () => {
       // Create a third user who is not part of the conversation
-      const user3 = await User.create({
+      await User.create({
         email: "user3@example.com",
         username: "user3",
         passwordHash: "Password123!",

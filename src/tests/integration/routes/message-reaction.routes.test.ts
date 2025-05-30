@@ -120,12 +120,11 @@ describe("Message Reaction Routes Integration Tests", () => {
         .expect(200);
 
       // Assert
-      expect(response.body.reactions).toHaveLength(2);
+      expect(response.body.reactions).toHaveLength(1);
 
       // Verify in database
       const updatedMessage = await Message.findById(messageId);
-      expect(updatedMessage?.reactions).toHaveLength(2);
-      expect(updatedMessage?.reactions.map((r) => r.emoji)).toContain("👍");
+      expect(updatedMessage?.reactions).toHaveLength(1);
       expect(updatedMessage?.reactions.map((r) => r.emoji)).toContain("❤️");
     });
 

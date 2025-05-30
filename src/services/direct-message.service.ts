@@ -253,10 +253,6 @@ export class DirectMessageService {
       userId2,
     );
 
-    if (!directMessage) {
-      throw new NotFoundError("direct message");
-    }
-
     return directMessage;
   }
 
