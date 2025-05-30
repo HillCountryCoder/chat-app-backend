@@ -1,3 +1,4 @@
+// src/services/channel.service.ts - Phase 3 additions only
 import { channelRepository } from "../repositories/channel.repository";
 import { channelMemberRepository } from "../repositories/channel-member.repository";
 import { userRepository } from "../repositories/user.repository";
@@ -22,6 +23,12 @@ import {
 import mongoose from "mongoose";
 import { threadRepository } from "../repositories/thread.repository";
 import { unreadMessagesService } from "./unread-messages.service";
+import { messageService } from "./message.service"; // Phase 3 addition
+import { attachmentService } from "./attachment.service"; // Phase 3 addition
+import {
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_TOTAL_MESSAGE_SIZE,
+} from "../constants";
 
 export interface CreateChannelDTO {
   name: string;
@@ -46,6 +53,8 @@ export class ChannelService {
     }
     return ChannelService.instance;
   }
+
+  // ... ALL EXISTING METHODS REMAIN UNCHANGED ...
 
   async createChannel(
     data: CreateChannelDTO,
@@ -353,8 +362,12 @@ export class ChannelService {
     // Verify user has access to this channel
     await this.getChannelById(channelId, userId);
 
-    // Get messages
-    return messageRepository.findByChannelId(channelId, options);
+    // Phase 3 enhancement: Get messages with populated attachments
+    const messages = await messageRepository.findByChannelId(
+      channelId,
+      options,
+    );
+    return await messageService.populateMessageAttachments(messages);
   }
 
   async sendMessage(data: {
@@ -362,23 +375,37 @@ export class ChannelService {
     channelId: string;
     content: string;
     replyToId?: string;
+    attachmentIds?: string[];
   }) {
+    const { attachmentIds = [] } = data;
+
+    if (attachmentIds.length > 0) {
+      await this.validateMessageWithAttachments(attachmentIds, data.senderId);
+    }
+
     // Verify channel exists and user is a member
     await this.getChannelById(data.channelId, data.senderId);
 
-    // Create a unique messageId
-    const messageId = `${Date.now()}_${uuidv4()}`;
+    // Phase 3: Use messageService for attachment support
+    const message =
+      attachmentIds.length > 0
+        ? await messageService.createMessageWithAttachments({
+            senderId: data.senderId,
+            channelId: data.channelId,
+            content: data.content,
+            replyToId: data.replyToId,
+            attachmentIds,
+          })
+        : await messageRepository.createMessage({
+            messageId: `${Date.now()}_${uuidv4()}`,
+            senderId: data.senderId,
+            channelId: data.channelId,
+            content: data.content,
+            contentType: ContentType.TEXT,
+            replyToId: data.replyToId,
+          });
 
-    // Create the message
-    const message = await messageRepository.createMessage({
-      messageId,
-      senderId: data.senderId,
-      channelId: data.channelId,
-      content: data.content,
-      contentType: ContentType.TEXT,
-      replyToId: data.replyToId,
-    });
-
+    // Existing population logic preserved
     const messageDocument = await messageRepository.findById(
       message._id.toString(),
     );
@@ -394,6 +421,7 @@ export class ChannelService {
       path: "senderId",
       select: "_id username displayName avatarUrl",
     });
+
     // Update the channel's lastActivity timestamp
     await channelRepository.update(data.channelId, {
       lastActivity: new Date(),
@@ -419,6 +447,36 @@ export class ChannelService {
       message: populatedMessageWithSenderId,
     };
   }
+
+  private async validateMessageWithAttachments(
+    attachmentIds: string[],
+    senderId: string,
+  ): Promise<void> {
+    if (!attachmentIds.length) return;
+
+    // Check attachment count limit
+    if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+      throw new ValidationError(
+        `Cannot attach more than ${MAX_ATTACHMENTS_PER_MESSAGE} files per message`,
+      );
+    }
+
+    // Validate attachment access and calculate total size
+    await messageService.validateAttachmentAccess(attachmentIds, senderId);
+
+    const totalSize = await attachmentService.calculateMessageAttachmentSize(
+      attachmentIds,
+    );
+
+    if (totalSize > MAX_TOTAL_MESSAGE_SIZE) {
+      throw new ValidationError(
+        `Total attachment size (${Math.round(
+          totalSize / 1024 / 1024,
+        )}MB) exceeds limit of ${MAX_TOTAL_MESSAGE_SIZE / 1024 / 1024}MB`,
+      );
+    }
+  }
+
   async markMessagesAsRead(channelId: string, userId: string) {
     await this.getChannelById(channelId, userId);
 
@@ -434,7 +492,6 @@ export class ChannelService {
     return unreadMessagesService.getUnreadCount(userId, "channel", channelId);
   }
 
-  // Thread-related methods
   async createThread(data: {
     channelId: string;
     messageId: string;
@@ -442,10 +499,8 @@ export class ChannelService {
     content: string;
     title?: string;
   }) {
-    // Verify channel exists and user is a member
     await this.getChannelById(data.channelId, data.senderId);
 
-    // Find the parent message
     const parentMessage = await messageRepository.findOne({
       messageId: data.messageId,
     });
@@ -453,12 +508,10 @@ export class ChannelService {
       throw new NotFoundError("message");
     }
 
-    // Mark the parent message as a thread starter
     await messageRepository.update(parentMessage._id.toString(), {
       isThreadStarter: true,
     });
 
-    // Create the thread
     const thread = await threadRepository.create({
       channelId: data.channelId,
       parentMessageId: parentMessage._id,
@@ -468,7 +521,6 @@ export class ChannelService {
       participantIds: [data.senderId],
     });
 
-    // Create the first message in the thread
     const threadMessageId = `${Date.now()}_${uuidv4()}`;
     const threadMessage = await messageRepository.createMessage({
       messageId: threadMessageId,
@@ -493,24 +545,31 @@ export class ChannelService {
       after?: string;
     },
   ) {
-    // Find the thread
     const thread = await threadRepository.findById(threadId);
     if (!thread) {
       throw new NotFoundError("thread");
     }
 
-    // Verify user has access to the thread's channel
     await this.getChannelById(thread.channelId.toString(), userId);
 
-    // Get messages
-    return messageRepository.findByThreadId(threadId, options);
+    const messages = await messageRepository.findByThreadId(threadId, options);
+    return await messageService.populateMessageAttachments(messages);
   }
 
+  // Phase 3 enhancement: Updated sendThreadMessage to support attachments
   async sendThreadMessage(data: {
     senderId: string;
     threadId: string;
     content: string;
+    attachmentIds?: string[]; // Phase 3 addition
   }) {
+    const { attachmentIds = [] } = data; // Phase 3 addition
+
+    // Phase 3: Validate attachments if provided
+    if (attachmentIds.length > 0) {
+      await this.validateMessageWithAttachments(attachmentIds, data.senderId);
+    }
+
     // Find the thread
     const thread = await threadRepository.findById(data.threadId);
     if (!thread) {
@@ -520,17 +579,22 @@ export class ChannelService {
     // Verify user has access to the thread's channel
     await this.getChannelById(thread.channelId.toString(), data.senderId);
 
-    // Create a unique messageId
-    const messageId = `${Date.now()}_${uuidv4()}`;
-
-    // Create the message
-    const message = await messageRepository.createMessage({
-      messageId,
-      senderId: data.senderId,
-      threadId: data.threadId,
-      content: data.content,
-      contentType: ContentType.TEXT,
-    });
+    // Phase 3: Use messageService for attachment support
+    const message =
+      attachmentIds.length > 0
+        ? await messageService.createMessageWithAttachments({
+            senderId: data.senderId,
+            threadId: data.threadId,
+            content: data.content,
+            attachmentIds,
+          })
+        : await messageRepository.createMessage({
+            messageId: `${Date.now()}_${uuidv4()}`,
+            senderId: data.senderId,
+            threadId: data.threadId,
+            content: data.content,
+            contentType: ContentType.TEXT,
+          });
 
     // Update thread lastActivity and add participant if not already in the list
     const participants = new Set(
@@ -567,6 +631,30 @@ export class ChannelService {
     await this.getChannelById(thread.channelId.toString(), userId);
 
     return thread;
+  }
+
+  async getAttachmentStats(channelId: string, userId: string) {
+    await this.getChannelById(channelId, userId);
+    return await messageService.getAttachmentStatistics(channelId, "channel");
+  }
+
+  async getMediaMessages(
+    channelId: string,
+    userId: string,
+    options?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+    },
+  ) {
+    await this.getChannelById(channelId, userId);
+    const mediaMessages = await messageService.getMediaMessages(
+      undefined,
+      channelId,
+      undefined,
+      options,
+    );
+    return await messageService.populateMessageAttachments(mediaMessages);
   }
 }
 

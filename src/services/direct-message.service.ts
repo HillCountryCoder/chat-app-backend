@@ -1,14 +1,26 @@
+// src/services/direct-message.service.ts - Enhanced for Phase 3
 import { createLogger } from "../common/logger";
 import { directMessageRepository } from "../repositories/direct-message.repository";
 import { messageRepository } from "../repositories/message.repository";
-import { userRepository } from "../repositories/user.repository";
-import { NotFoundError, ForbiddenError } from "../common/errors";
-import { v4 as uuidv4 } from "uuid";
-import { ContentType, DirectMessageInterface } from "../models";
+import {
+  NotFoundError,
+  ForbiddenError,
+  ValidationError,
+} from "../common/errors";
+import { DirectMessageInterface } from "../models";
 import mongoose from "mongoose";
 import { unreadMessagesService } from "./unread-messages.service";
+import { userService } from "./user.service";
+import { messageService } from "./message.service";
+import { attachmentService } from "./attachment.service";
+import {
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_TOTAL_MESSAGE_SIZE,
+} from "../constants";
 
 const logger = createLogger("direct-message-service");
+
+// Constants for Phase 3
 
 export class DirectMessageService {
   private static instance: DirectMessageService;
@@ -24,21 +36,12 @@ export class DirectMessageService {
 
   async getOrCreateDirectMessage(userId1: string, userId2: string) {
     // Check if both users exist
-    const [user1, user2] = await Promise.all([
-      userRepository.findById(userId1),
-      userRepository.findById(userId2),
-    ]);
+    await userService.checkIfUsersExists([userId1, userId2]);
 
-    if (!user1 || !user2) {
-      throw new NotFoundError("user");
-    }
-
-    // Look for existing direct message
-    let directMessage = await directMessageRepository.findByParticipants(
+    let directMessage = await this.getDirectMessageByParticipantIds(
       userId1,
       userId2,
     );
-
     // If none exists, create a new one
     if (!directMessage) {
       logger.info(
@@ -114,92 +117,122 @@ export class DirectMessageService {
     // Verify user has access to this direct message
     await this.getDirectMessageById(directMessageId, userId);
 
-    // Get messages
-    return messageRepository.findByDirectMessageId(directMessageId, options);
+    // Get messages with populated attachments
+    const messages = await messageRepository.findByDirectMessageId(
+      directMessageId,
+      options,
+    );
+
+    // Populate attachments for messages that have them
+    return await messageService.populateMessageAttachments(messages);
   }
 
+  // Enhanced sendMessage method for Phase 3
   async sendMessage(data: {
     senderId: string;
     receiverId?: string;
     directMessageId?: string;
     content: string;
+    attachmentIds?: string[];
     replyToId?: string;
   }) {
-    let directMessageId = data.directMessageId;
+    const {
+      senderId,
+      receiverId,
+      directMessageId,
+      content,
+      attachmentIds = [],
+      replyToId,
+    } = data;
+
+    // Phase 3 validations
+    await this.validateMessageWithAttachments(attachmentIds, senderId);
+
+    let dmId = directMessageId;
 
     // If directMessageId isn't provided but receiverId is, get or create a direct message
-    if (!directMessageId && data.receiverId) {
+    if (!dmId && receiverId) {
       const directMessage = await this.getOrCreateDirectMessage(
-        data.senderId,
-        data.receiverId,
+        senderId,
+        receiverId,
       );
-      directMessageId = directMessage._id.toString();
+      dmId = directMessage._id.toString();
     }
 
-    if (!directMessageId) {
+    if (!dmId) {
       throw new Error("Either directMessageId or receiverId must be provided");
     }
 
-    const directMessage = await this.getDirectMessageById(
-      directMessageId,
-      data.senderId,
-    );
+    // Verify the direct message exists and the sender is a participant
+    const directMessage = await this.getDirectMessageById(dmId, senderId);
 
-    const messageId = `${Date.now()}_${uuidv4()}`;
-    // Validate reply message exists
-    if (data.replyToId) {
-      const replyMessage = await messageRepository.findById(data.replyToId);
-      if (
-        !replyMessage ||
-        replyMessage.directMessageId?.toString() !== directMessageId
-      ) {
-        throw new Error("Invalid reply message");
-      }
-    }
-    // Create the message
-    const message = await messageRepository.createMessage({
-      messageId,
-      senderId: data.senderId,
-      directMessageId,
-      content: data.content,
-      contentType: ContentType.TEXT,
-      replyToId: data.replyToId,
+    // Create the message with attachments
+    const message = await messageService.createMessageWithAttachments({
+      senderId,
+      content,
+      attachmentIds,
+      directMessageId: dmId,
+      replyToId,
     });
 
-    const messageDocument = await messageRepository.findById(
-      message._id.toString(),
-    );
-    const populatedMessage = await messageDocument?.populate({
-      path: "replyTo",
-      select: "content senderId",
-      populate: {
-        path: "senderId",
-        select: "displayName",
-      },
-    });
-    const populatedMessageWithSenderId = await populatedMessage.populate({
-      path: "senderId",
-      select: "_id username displayName avatarUrl",
-    });
     // Update the lastActivity timestamp of the direct message
-    await directMessageRepository.update(directMessageId, {
+    await directMessageRepository.update(dmId, {
       lastActivity: new Date(),
     });
 
     // Increment unread count for all participants except the sender
     await unreadMessagesService.incrementUnreadCount(
       "dm",
-      directMessageId,
-      data.senderId,
+      dmId,
+      senderId,
       directMessage.participantIds.map((id) =>
         id instanceof mongoose.Types.ObjectId ? id.toString() : id,
       ),
     );
 
+    logger.info("Direct message sent with attachments", {
+      messageId: message.messageId,
+      dmId,
+      senderId,
+      attachmentCount: attachmentIds.length,
+      hasMedia: message.hasMedia,
+      totalAttachmentSize: message.totalAttachmentSize,
+    });
+
     return {
-      message: populatedMessageWithSenderId,
+      message,
       directMessage,
     };
+  }
+
+  // Phase 3 validation method
+  private async validateMessageWithAttachments(
+    attachmentIds: string[],
+    senderId: string,
+  ): Promise<void> {
+    if (!attachmentIds.length) return;
+
+    // Check attachment count limit
+    if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+      throw new ValidationError(
+        `Cannot attach more than ${MAX_ATTACHMENTS_PER_MESSAGE} files per message`,
+      );
+    }
+
+    // Validate attachment access and calculate total size
+    await messageService.validateAttachmentAccess(attachmentIds, senderId);
+
+    const totalSize = await attachmentService.calculateMessageAttachmentSize(
+      attachmentIds,
+    );
+
+    if (totalSize > MAX_TOTAL_MESSAGE_SIZE) {
+      throw new ValidationError(
+        `Total attachment size (${Math.round(
+          totalSize / 1024 / 1024,
+        )}MB) exceeds limit of ${MAX_TOTAL_MESSAGE_SIZE / 1024 / 1024}MB`,
+      );
+    }
   }
 
   async markMessagesAsRead(directMessageId: string, userId: string) {
@@ -212,6 +245,51 @@ export class DirectMessageService {
 
   async getUnreadCounts(userId: string) {
     return unreadMessagesService.getAllUnreadCounts(userId);
+  }
+
+  async getDirectMessageByParticipantIds(userId1: string, userId2: string) {
+    const directMessage = await directMessageRepository.findByParticipants(
+      userId1,
+      userId2,
+    );
+
+    if (!directMessage) {
+      throw new NotFoundError("direct message");
+    }
+
+    return directMessage;
+  }
+
+  // Enhanced media messages for Phase 3
+  async getMediaMessages(
+    directMessageId: string,
+    userId: string,
+    options?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+    },
+  ) {
+    // Verify user has access to this direct message
+    await this.getDirectMessageById(directMessageId, userId);
+
+    // Get only messages with media
+    const mediaMessages = await messageService.getMediaMessages(
+      directMessageId,
+      undefined,
+      undefined,
+      options,
+    );
+
+    // Populate attachment details
+    return await messageService.populateMessageAttachments(mediaMessages);
+  }
+
+  // New method for Phase 3: Get attachment statistics
+  async getAttachmentStats(directMessageId: string, userId: string) {
+    await this.getDirectMessageById(directMessageId, userId);
+
+    return await messageService.getAttachmentStatistics(directMessageId, "dm");
   }
 }
 
