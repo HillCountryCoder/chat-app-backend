@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Message, MessageInterface } from "../models";
 import { BaseRepository } from "./base.repository";
 import { Types } from "mongoose";
@@ -240,6 +241,32 @@ export class MessageRepository extends BaseRepository<
     replyToId?: string;
   }): Promise<MessageInterface> {
     return this.create(message);
+  }
+  async findWithPopulate(
+    query: any,
+    options: {
+      sort?: any;
+      limit?: number;
+      populate?: any[];
+    } = {},
+  ) {
+    const { sort, limit, populate } = options;
+
+    let findQuery = this.model.find(query);
+
+    if (sort) {
+      findQuery = findQuery.sort(sort);
+    }
+
+    if (limit) {
+      findQuery = findQuery.limit(limit);
+    }
+
+    if (populate) {
+      findQuery = findQuery.populate(populate);
+    }
+
+    return findQuery.lean();
   }
 }
 
