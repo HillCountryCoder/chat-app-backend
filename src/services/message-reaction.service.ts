@@ -27,25 +27,30 @@ export class MessageReactionService {
     userId: string,
     emoji: string,
   ): Promise<MessageInterface> {
-    logger.debug(
-      `Adding reaction ${emoji} to message ${messageId} by user ${userId}`,
-    );
-
     const message = await messageService.getMessageByIdOrThrowError(messageId);
     const userObjectId = this.createObjectId(userId);
 
-    // First, remove any existing reactions from this user on this message
+    // Check if user already has this exact reaction
+    const alreadyHasThisEmoji = message.reactions.some(
+      (r) =>
+        r.emoji === emoji &&
+        r.users.some((id) => id.toString() === userObjectId.toString()),
+    );
+
+    if (alreadyHasThisEmoji) {
+      return message; // No change needed
+    }
+
+    // Remove user's existing reactions (different emojis)
     for (const reaction of message.reactions) {
       const userIndex = reaction.users.findIndex(
         (id) => id.toString() === userObjectId.toString(),
       );
 
       if (userIndex !== -1) {
-        // Remove user from this reaction
         reaction.users.splice(userIndex, 1);
         reaction.count = reaction.users.length;
 
-        // If no users left for this reaction, remove it entirely
         if (reaction.users.length === 0) {
           const reactionIndex = message.reactions.indexOf(reaction);
           if (reactionIndex !== -1) {
@@ -55,15 +60,13 @@ export class MessageReactionService {
       }
     }
 
-    // Now add the new reaction
+    // Add the new reaction
     const existingReaction = message.reactions.find((r) => r.emoji === emoji);
 
     if (existingReaction) {
-      // Add user to existing reaction
       existingReaction.users.push(userObjectId);
       existingReaction.count = existingReaction.users.length;
     } else {
-      // Create new reaction
       message.reactions.push({
         emoji,
         count: 1,
@@ -135,6 +138,7 @@ export class MessageReactionService {
   /**
    * Get all reactions for a message
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getReactions(messageId: string): Promise<any[]> {
     logger.debug(`Getting reactions for message ${messageId}`);
 

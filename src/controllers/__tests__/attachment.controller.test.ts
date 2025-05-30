@@ -19,6 +19,12 @@ vi.mock("../../common/logger", () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
+  createSocketLogger: vi.fn().mockReturnValue({
+    connection: vi.fn(),
+    disconnection: vi.fn(),
+    event: vi.fn(),
+    error: vi.fn(),
+  }),
 }));
 
 describe("AttachmentController", () => {

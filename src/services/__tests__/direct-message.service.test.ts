@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { directMessageService } from "../direct-message.service";
 import { directMessageRepository } from "../../repositories/direct-message.repository";
@@ -22,12 +23,14 @@ vi.mock("../../repositories/message.repository", () => ({
   messageRepository: {
     findByDirectMessageId: vi.fn(),
     createMessage: vi.fn(),
+    create: vi.fn(),
   },
 }));
 
 vi.mock("../../repositories/user.repository", () => ({
   userRepository: {
     findById: vi.fn(),
+    findByIds: vi.fn(),
   },
 }));
 
@@ -63,14 +66,10 @@ describe("DirectMessageService", () => {
 
   describe("getOrCreateDirectMessage", () => {
     it("should return existing direct message if found", async () => {
-      // Mock user repository
-      vi.mocked(userRepository.findById).mockResolvedValueOnce({
-        _id: userId1,
-      } as any);
-      vi.mocked(userRepository.findById).mockResolvedValueOnce({
-        _id: userId2,
-      } as any);
-
+      vi.mocked(userRepository.findByIds).mockResolvedValueOnce([
+        { _id: userId1 } as any,
+        { _id: userId2 } as any,
+      ]);
       // Mock direct message repository
       const mockDM = {
         _id: directMessageId,
@@ -96,13 +95,10 @@ describe("DirectMessageService", () => {
     });
 
     it("should create new direct message if none exists", async () => {
-      // Mock user repository
-      vi.mocked(userRepository.findById).mockResolvedValueOnce({
-        _id: userId1,
-      } as any);
-      vi.mocked(userRepository.findById).mockResolvedValueOnce({
-        _id: userId2,
-      } as any);
+      vi.mocked(userRepository.findByIds).mockResolvedValueOnce([
+        { _id: userId1 } as any,
+        { _id: userId2 } as any,
+      ]);
 
       // Mock direct message repository
       vi.mocked(
@@ -226,7 +222,7 @@ describe("DirectMessageService", () => {
         content: "Test message",
       };
 
-      vi.mocked(messageRepository.createMessage).mockResolvedValueOnce(
+      vi.mocked(messageRepository.create).mockResolvedValueOnce(
         mockMessage as any,
       );
 
@@ -243,7 +239,7 @@ describe("DirectMessageService", () => {
         directMessage: mockDM,
       });
 
-      expect(messageRepository.createMessage).toHaveBeenCalledWith(
+      expect(messageRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           directMessageId,
           content: "Test message",
@@ -286,7 +282,7 @@ describe("DirectMessageService", () => {
         content: "Test message",
       };
 
-      vi.mocked(messageRepository.createMessage).mockResolvedValueOnce(
+      vi.mocked(messageRepository.create).mockResolvedValueOnce(
         mockMessage as any,
       );
 
