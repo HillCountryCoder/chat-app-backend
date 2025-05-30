@@ -4,13 +4,17 @@ import { socketAuthMiddleware } from "./middleware/auth.middleware";
 import { ErrorHandler } from "../common/errors";
 import { registerDirectMessageHandlers } from "./direct-message.handler";
 import { registerChannelHandlers } from "./channel.handler";
+import { registerAttachmentHandlers } from "./attachment.handler"; // Phase 3
 import { Server as HttpServer } from "http";
 import { unreadMessagesService } from "../services/unread-messages.service";
-import { env } from "../common/environment";
+import { env } from "process";
 import { registerMessageReactionHandlers } from "./message-reaction.handler";
+
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
 const errorHandler = new ErrorHandler(logger);
+
+let socketServerInstance: Server;
 
 export const initializeSocketServer = (server: HttpServer) => {
   const io = new Server(server, {
@@ -22,6 +26,8 @@ export const initializeSocketServer = (server: HttpServer) => {
     },
     path: process.env.SOCKET_PATH || "/socket.io",
   });
+
+  socketServerInstance = io;
 
   // Socket authentication middleware
   io.use(socketAuthMiddleware);
@@ -42,10 +48,11 @@ export const initializeSocketServer = (server: HttpServer) => {
         status: "online",
       });
 
-      // Register handlers
+      // Register all handlers
       registerDirectMessageHandlers(io, socket, userId);
       registerChannelHandlers(io, socket, userId);
       registerMessageReactionHandlers(io, socket, userId);
+      registerAttachmentHandlers(io, socket, userId);
 
       // Send initial unread counts
       async function sendInitialUnreadCounts() {
@@ -59,14 +66,12 @@ export const initializeSocketServer = (server: HttpServer) => {
         }
       }
 
-      // Send initial unread counts after connection
       sendInitialUnreadCounts();
 
       // Handle disconnection
       socket.on("disconnect", (reason) => {
         socketLogger.disconnection(socket.id, reason);
 
-        // Set offline status
         socket.broadcast.emit("user_status_changed", {
           userId,
           status: "offline",
@@ -83,4 +88,8 @@ export const initializeSocketServer = (server: HttpServer) => {
 
   logger.info("Socket.IO server initialized");
   return io;
+};
+
+export const getSocketServer = (): Server | null => {
+  return socketServerInstance || null;
 };

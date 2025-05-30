@@ -5,6 +5,7 @@ import { ErrorHandler } from "../common/errors";
 import { ValidationError } from "../common/errors";
 import { z } from "zod";
 import mongoose from "mongoose";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "../constants";
 
 const logger = createSocketLogger(createLogger("direct-message-socket"));
 const errorHandler = new ErrorHandler(createLogger("socket-error-handler"));
@@ -14,7 +15,11 @@ const sendMessageSchema = z
     content: z.string().min(1).max(2000),
     receiverId: z.string().optional(),
     directMessageId: z.string().optional(),
-	replyToId: z.string().optional()
+    attachmentIds: z
+      .array(z.string())
+      .max(MAX_ATTACHMENTS_PER_MESSAGE)
+      .optional(),
+    replyToId: z.string().optional(),
   })
   .refine((data) => data.receiverId || data.directMessageId, {
     message: "Either receiverId or directMessageId must be provided",
@@ -28,7 +33,10 @@ export const registerDirectMessageHandlers = (
   // When a user sends a new direct message
   socket.on("send_direct_message", async (data, callback) => {
     try {
-      logger.event(socket.id, "send_direct_message", data);
+      logger.event(socket.id, "send_direct_message", {
+        ...data,
+        attachmentCount: data.attachmentIds?.length || 0,
+      });
 
       // Validate the data
       let validatedData;
@@ -49,7 +57,8 @@ export const registerDirectMessageHandlers = (
         receiverId: validatedData.receiverId,
         directMessageId: validatedData.directMessageId,
         content: validatedData.content,
-		replyToId: validatedData.replyToId,
+        attachmentIds: validatedData.attachmentIds || [],
+        replyToId: validatedData.replyToId,
       });
 
       // Find the recipient (the other user in the conversation)
@@ -75,24 +84,16 @@ export const registerDirectMessageHandlers = (
           directMessage: result.directMessage,
         });
 
-        // Send unread count update to recipient
-        if (recipientId) {
-          const recipientIdStr =
-            recipientId instanceof mongoose.Types.ObjectId
-              ? recipientId.toString()
-              : recipientId;
+        // Get unread counts for the recipient
+        const unreadCounts = await directMessageService.getUnreadCounts(
+          recipientIdStr,
+        );
 
-          // Get unread counts for the recipient
-          const unreadCounts = await directMessageService.getUnreadCounts(
-            recipientIdStr,
-          );
-
-          // Emit the unread counts to the recipient
-          io.to(`user:${recipientIdStr}`).emit(
-            "unread_counts_update",
-            unreadCounts,
-          );
-        }
+        // Emit the unread counts to the recipient
+        io.to(`user:${recipientIdStr}`).emit(
+          "unread_counts_update",
+          unreadCounts,
+        );
       }
 
       // Send confirmation to sender
@@ -172,5 +173,35 @@ export const registerDirectMessageHandlers = (
     logger.event(socket.id, "leave_direct_message", data);
     const { directMessageId } = data;
     socket.leave(`direct_message:${directMessageId}`);
+  });
+
+  socket.on("subscribe_attachment_updates", (data, callback) => {
+    try {
+      const { attachmentIds } = data;
+      if (!Array.isArray(attachmentIds)) {
+        throw new ValidationError("attachmentIds must be an array");
+      }
+      // Join attachment-specific rooms for real-time updates
+      attachmentIds.forEach((attachmentId: string) => {
+        socket.join(`attachment:${attachmentId}`);
+      });
+      logger.event(socket.id, "subscribed_to_attachment_updates", {
+        attachmentCount: attachmentIds.length,
+      });
+
+      if (typeof callback === "function") {
+        callback({ success: true, subscribedTo: attachmentIds.length });
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(socket.id, error);
+        if (typeof callback === "function") {
+          callback({
+            success: false,
+            error: error.message || "Failed to subscribe to attachment updates",
+          });
+        }
+      }
+    }
   });
 };
