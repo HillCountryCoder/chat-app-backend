@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { createLogger } from "../common/logger";
 import { env } from "../common/environment";
 import { BadRequestError } from "../common/errors";
+import { MAX_FILE_SIZE } from "../constants";
 
 const logger = createLogger("s3-service");
 
@@ -62,7 +63,6 @@ export class S3Service {
     }
 
     // Check file size (25MB limit)
-    const MAX_FILE_SIZE = 25 * 1024 * 1024;
     if (fileSize > MAX_FILE_SIZE) {
       throw new BadRequestError("File size exceeds the 25MB limit");
     }

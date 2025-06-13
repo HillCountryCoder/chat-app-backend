@@ -151,7 +151,15 @@ async function notifyBackend(fileKey, status, errorDetails = null) {
   try {
     // Get API key with priority to SSM
     const apiKey = await getApiKey();
-
+    if (!apiKey) {
+      console.warn("No API key available, skipping backend notification");
+      return;
+    }
+    const apiEndpoint = process.env.API_ENDPOINT;
+    if (!apiEndpoint) {
+      console.warn("API_ENDPOINT not set, skipping backend notification");
+      return;
+    }
     const response = await axios({
       method: "POST",
       url: `${process.env.API_ENDPOINT}/api/attachments/status-update`,
@@ -170,7 +178,8 @@ async function notifyBackend(fileKey, status, errorDetails = null) {
     console.log("Backend notification sent:", response.data);
     return response.data;
   } catch (error) {
+	console.error("Api Endpoint", process.env.API_ENDPOINT);
+    console.error("Error notifying backend:", error);
     console.error("Failed to notify backend:", error.message);
-    // Don't throw - we don't want the lambda to fail if notification fails
   }
 }

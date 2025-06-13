@@ -1,4 +1,5 @@
 // src/tests/helpers/attachment-test-helper.ts
+import { MAX_FILE_SIZE } from "../../constants";
 import { Attachment, AttachmentInterface } from "../../models";
 import crypto from "crypto";
 
@@ -280,7 +281,7 @@ export class AttachmentTestHelper {
       metadata: {
         bucket: "test-bucket",
         key,
-        maxFileSize: 25 * 1024 * 1024, // 25MB
+        maxFileSize: MAX_FILE_SIZE, // 25MB
       },
     };
   }
@@ -418,35 +419,35 @@ export class AttachmentTestHelper {
         fileType: "image/jpeg",
         extension: "jpg",
         expectedProcessing: true, // Thumbnail generation
-        maxSize: 25 * 1024 * 1024,
+        maxSize: MAX_FILE_SIZE,
       },
       {
         name: "PNG Image",
         fileType: "image/png",
         extension: "png",
         expectedProcessing: true,
-        maxSize: 25 * 1024 * 1024,
+        maxSize: MAX_FILE_SIZE,
       },
       {
         name: "MP4 Video",
         fileType: "video/mp4",
         extension: "mp4",
         expectedProcessing: true, // Thumbnail + compression
-        maxSize: 25 * 1024 * 1024,
+        maxSize: MAX_FILE_SIZE,
       },
       {
         name: "PDF Document",
         fileType: "application/pdf",
         extension: "pdf",
         expectedProcessing: false, // No processing
-        maxSize: 25 * 1024 * 1024,
+        maxSize: MAX_FILE_SIZE,
       },
       {
         name: "Text File",
         fileType: "text/plain",
         extension: "txt",
         expectedProcessing: false,
-        maxSize: 25 * 1024 * 1024,
+        maxSize: MAX_FILE_SIZE,
       },
     ];
   }

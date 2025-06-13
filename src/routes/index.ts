@@ -12,5 +12,5 @@ router.use("/direct-messages", directMessageRoutes);
 router.use("/users", userRoutes);
 router.use("/channels", channelRoutes);
 router.use("/messages", messageReactionRoutes);
-router.use("/attachments", attachmentRoutes);
+router.use('/attachments', attachmentRoutes);
 export default router;
