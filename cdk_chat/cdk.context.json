@@ -6,5 +6,6 @@
     "us-east-1d",
     "us-east-1e",
     "us-east-1f"
-  ]
+  ],
+  "ssm:account=519076116465:parameterName=/chat-app/development/api-key:region=us-east-1": "2daa1caeae8321e0a182cf65dee371f314a5e35ef3e72e9d"
 }

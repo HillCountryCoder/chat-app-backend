@@ -173,20 +173,16 @@ export class ChatBackendStack extends cdk.Stack {
     });
 
     const apiKeyParamName = `/chat-app/${props.stage}/api-key`;
-
+    const existingApiKey = ssm.StringParameter.valueFromLookup(
+      this,
+      apiKeyParamName,
+    );
     // Check for existing parameter in SSM (for redeployments)
-    let apiKeyValue = process.env.API_KEY || "";
-    if (!apiKeyValue) {
-      apiKeyValue = crypto.randomBytes(24).toString("hex");
-
-      getExistingParameter(apiKeyParamName)
-        .then((existingKey) => {
-          if (existingKey) {
-            apiKeyValue = existingKey;
-          }
-        })
-        .catch(() => {});
-    }
+    let apiKeyValue =
+      process.env.API_KEY ||
+      (existingApiKey !== "dummy-value-for-" + apiKeyParamName
+        ? existingApiKey
+        : crypto.randomBytes(24).toString("hex"));
 
     // Store in SSM Parameter Store for persistent access
     const apiKeyParam = new ssm.StringParameter(this, "ChatApiKeyParameter", {

@@ -17,13 +17,8 @@ const ssmClient = new SSMClient({
 
 // Function to get API key - first checks environment, then SSM parameter store
 async function getApiKey() {
-  // First check environment variable
-  if (process.env.API_KEY) {
-    return process.env.API_KEY;
-  }
-
   // If parameter name is provided, try to fetch from SSM
-  if (process.env.API_KEY_PARAMETER_NAME) {
+  if (!process.env.API_KEY && process.env.API_KEY_PARAMETER_NAME) {
     try {
       const response = await ssmClient.send(
         new GetParameterCommand({
@@ -40,8 +35,7 @@ async function getApiKey() {
     }
   }
 
-  console.warn("No API key found in environment or SSM");
-  return "";
+  return process.env.API_KEY || "";
 }
 
 export const handler = async (event) => {
@@ -170,7 +164,7 @@ async function notifyBackend(fileKey, status, errorDetails = null) {
       data: {
         fileKey,
         status,
-        errorDetails,
+        errorDetails: errorDetails || "",
         source: "virus-scanner-lambda",
       },
     });
@@ -178,7 +172,7 @@ async function notifyBackend(fileKey, status, errorDetails = null) {
     console.log("Backend notification sent:", response.data);
     return response.data;
   } catch (error) {
-	console.error("Api Endpoint", process.env.API_ENDPOINT);
+    console.error("Api Endpoint", process.env.API_ENDPOINT);
     console.error("Error notifying backend:", error);
     console.error("Failed to notify backend:", error.message);
   }
