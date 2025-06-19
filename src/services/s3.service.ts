@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from "crypto";
@@ -191,6 +192,75 @@ export class S3Service {
 
   private isImageOrVideo(mimeType: string): boolean {
     return mimeType.startsWith("image/") || mimeType.startsWith("video/");
+  }
+
+  /**
+   * Get file metadata from S3
+   */
+  async getFileMetadata(bucket: string, key: string) {
+    const command = new HeadObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+
+    const response = await this.s3Client.send(command);
+
+    logger.info("Retrieved file metadata", {
+      bucket,
+      key,
+      contentLength: response.ContentLength,
+      contentType: response.ContentType,
+      eTag: response.ETag,
+      lastModified: response.LastModified,
+    });
+
+    return response;
+  }
+
+  /**
+   * Get first N bytes of a file for validation (magic number checking)
+   */
+  async getFileHead(
+    bucket: string,
+    key: string,
+    bytes: number = 1024,
+  ): Promise<Buffer> {
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Range: `bytes=0-${bytes - 1}`, // Get first N bytes
+    });
+
+    const response = await this.s3Client.send(command);
+
+    if (!response.Body) {
+      throw new Error("No file content received");
+    }
+
+    // Convert stream to buffer
+    const chunks: Uint8Array[] = [];
+    const reader = response.Body.transformToWebStream().getReader();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    const buffer = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+
+    logger.debug("Retrieved file head", {
+      bucket,
+      key,
+      bytesRequested: bytes,
+      bytesReceived: buffer.length,
+    });
+
+    return buffer;
   }
 }
 

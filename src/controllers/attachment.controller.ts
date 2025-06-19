@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../common/types/auth.type";
 import { attachmentService } from "../services/attachment.service";
 import { createLogger } from "../common/logger";
@@ -6,7 +6,6 @@ import { ValidationError, UnauthorizedError } from "../common/errors";
 import { z } from "zod";
 import { emitAttachmentStatusUpdate } from "../socket/attachment.handler";
 import { getSocketServer } from "../socket";
-
 const logger = createLogger("attachment-controller");
 
 // Validation schemas
@@ -17,7 +16,10 @@ const uploadUrlSchema = z.object({
     .regex(
       /^[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.]*$/,
     ),
-  fileSize: z.number().positive(),
+  fileSize: z
+    .number()
+    .positive()
+    .max(25 * 1024 * 1024), // 25MB limit
   hasClientThumbnail: z.boolean().optional(),
 });
 
@@ -31,31 +33,7 @@ const completeUploadSchema = z.object({
   eTag: z.string().optional(),
 });
 
-const statusUpdateSchema = z.object({
-  fileKey: z.string(),
-  status: z.enum(["uploading", "processing", "ready", "failed"]),
-  errorDetails: z.string().optional(),
-  source: z.string().optional(),
-  metadata: z
-    .object({
-      thumbnail: z
-        .object({
-          s3Key: z.string(),
-          url: z.string(),
-          width: z.number(),
-          height: z.number(),
-        })
-        .optional(),
-      compression: z
-        .object({
-          algorithm: z.enum(["webp", "h264", "none"]),
-          quality: z.number(),
-          compressionRatio: z.number(),
-        })
-        .optional(),
-    })
-    .optional(),
-});
+// 🔥 REMOVED: statusUpdateSchema - no longer needed
 
 export class AttachmentController {
   static async generateUploadUrl(
@@ -128,38 +106,6 @@ export class AttachmentController {
         ...validatedData,
       });
 
-      res.status(201).json(attachment);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  static async updateStatus(req: Request, res: Response, next: NextFunction) {
-    try {
-      logger.debug("Received attachment status update");
-
-      // Validate request body
-      let validatedData;
-      try {
-        validatedData = statusUpdateSchema.parse(req.body);
-      } catch (error) {
-        if (error instanceof z.ZodError) {
-          throw new ValidationError(
-            error.errors.map((e) => e.message).join(", "),
-          );
-        }
-        throw error;
-      }
-
-      const attachment = await attachmentService.updateStatus(validatedData);
-
-      logger.info("Attachment status updated", {
-        attachmentId: attachment._id,
-        fileKey: validatedData.fileKey,
-        status: validatedData.status,
-        source: validatedData.source || "unknown",
-      });
-
       const socketServer = getSocketServer();
       if (socketServer) {
         emitAttachmentStatusUpdate(
@@ -167,24 +113,22 @@ export class AttachmentController {
           attachment._id.toString(),
           attachment.uploadedBy.toString(),
           {
-            status: validatedData.status,
-            errorDetails: validatedData.errorDetails,
-            metadata: validatedData.metadata,
+            status: attachment.status, // Should be "ready"
             url: attachment.url,
             name: attachment.name,
             size: attachment.size,
+            metadata: attachment.metadata,
           },
         );
       }
 
-      res.status(200).json({
-        success: true,
-        attachment,
-      });
+      res.status(201).json(attachment);
     } catch (error) {
       next(error);
     }
   }
+
+  // 🔥 REMOVED: updateStatus method - no longer needed
 
   static async getDownloadUrl(
     req: AuthenticatedRequest,

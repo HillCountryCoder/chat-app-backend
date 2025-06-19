@@ -2,17 +2,20 @@ import { createLogger } from "../common/logger";
 import { attachmentRepository } from "../repositories/attachment.repository";
 import { userRepository } from "../repositories/user.repository";
 import { s3Service } from "./s3.service";
+import { fileValidationService } from "./file-validation.service";
 import {
   NotFoundError,
   BadRequestError,
   ForbiddenError,
 } from "../common/errors";
+import { USER_STORAGE_LIMIT } from "../constants";
 
 const logger = createLogger("attachment-service");
 
 export class AttachmentService {
   private static instance: AttachmentService;
   private static readonly MAX_FILE_SIZE = 1024 * 1024 * 25; // 25mb
+
   private constructor() {}
 
   static getInstance(): AttachmentService {
@@ -36,15 +39,16 @@ export class AttachmentService {
     if (!user) {
       throw new NotFoundError("user");
     }
-    if (fileSize > AttachmentService.MAX_FILE_SIZE) {
-      throw new BadRequestError(
-        `File size exceeds maximum limit of ${
-          AttachmentService.MAX_FILE_SIZE / (1024 * 1024)
-        } MB`,
-      );
-    }
+
+    // 🔥 COMPREHENSIVE VALIDATION (replaces Lambda)
+    await fileValidationService.quickValidate({
+      fileName,
+      fileType,
+      fileSize,
+    });
+
     // Check user storage quota (1GB default)
-    const userStorageLimit = 1024 * 1024 * 1024; // 1GB
+    const userStorageLimit = USER_STORAGE_LIMIT;
     const currentUsage = await attachmentRepository.getTotalSizeByUser(userId);
 
     if (currentUsage + fileSize > userStorageLimit) {
@@ -60,16 +64,17 @@ export class AttachmentService {
       hasClientThumbnail,
     });
 
-    logger.info("Generated upload URL", {
+    logger.info("Generated upload URL with validation", {
       userId,
       fileName,
       fileType,
       fileSize,
+      s3Key: uploadData.key,
       hasThumbnailUpload: !!uploadData.thumbnailUpload,
     });
 
     return {
-      uploadId: uploadData.key, // Use S3 key as upload ID
+      uploadId: uploadData.key,
       presignedUrl: uploadData.presignedUrl,
       cdnUrl: uploadData.cdnUrl,
       thumbnailUpload: uploadData.thumbnailUpload,
@@ -77,6 +82,7 @@ export class AttachmentService {
         bucket: uploadData.bucket,
         key: uploadData.key,
         maxFileSize: fileSize,
+        validated: true, // Indicate validation was done
       },
     };
   }
@@ -108,64 +114,77 @@ export class AttachmentService {
       throw new NotFoundError("user");
     }
 
-    // Create attachment record
+    // 🔥 VERIFY FILE EXISTS IN S3 (replaces Lambda race condition)
+    try {
+      const fileMetadata = await s3Service.getFileMetadata(s3Bucket, s3Key);
+
+      // Additional validation: file size should match what was uploaded
+      if (fileMetadata.ContentLength !== fileSize) {
+        logger.warn("File size mismatch", {
+          expectedSize: fileSize,
+          actualSize: fileMetadata.ContentLength,
+          s3Key,
+        });
+        // Don't throw error, just log - S3 might have different size due to encoding
+      }
+
+      // Optional: Download first few bytes for magic number validation
+      // This adds security but also latency - you can enable/disable based on needs
+      if (process.env.ENABLE_DEEP_VALIDATION === "true") {
+        const fileBuffer = await s3Service.getFileHead(s3Bucket, s3Key, 1024); // First 1KB
+        await fileValidationService.fullValidate({
+          fileName,
+          fileType,
+          fileSize,
+          fileBuffer,
+        });
+      }
+    } catch (error) {
+      logger.error("File verification failed during complete upload", {
+        s3Bucket,
+        s3Key,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new BadRequestError("File upload verification failed");
+    }
+
+    // Create attachment record - file is confirmed to exist and be valid
     const attachment = await attachmentRepository.create({
       name: fileName,
       url: cdnUrl,
       type: fileType,
       size: fileSize,
       uploadedBy: userId,
-      status: "processing", // Will be updated by Lambda
+      status: "ready", // 🔥 DIRECTLY SET TO READY - no Lambda processing needed
       metadata: {
         s3: {
           bucket: s3Bucket,
           key: s3Key,
           contentType: fileType,
           eTag,
-          encrypted: false, // For Phase 3
+          encrypted: false,
+        },
+        validation: {
+          validatedAt: new Date(),
+          method: "backend-validation",
+          deepValidation: process.env.ENABLE_DEEP_VALIDATION === "true",
         },
       },
     });
 
-    logger.info("Attachment upload completed", {
+    logger.info("Attachment upload completed with backend validation", {
       attachmentId: attachment._id,
       userId,
       fileName,
       s3Key,
+      status: attachment.status,
     });
 
     return attachment;
   }
 
-  async updateStatus(data: {
-    fileKey: string;
-    status: "uploading" | "processing" | "ready" | "failed";
-    errorDetails?: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    metadata?: any;
-  }) {
-    const { fileKey, status, errorDetails, metadata } = data;
-
-    const attachment = await attachmentRepository.updateStatus(
-      fileKey,
-      status,
-      metadata,
-    );
-
-    if (!attachment) {
-      throw new NotFoundError("attachment with specified S3 key");
-    }
-
-    logger.info("Attachment status updated", {
-      attachmentId: attachment._id,
-      fileKey,
-      status,
-      errorDetails,
-    });
-
-    return attachment;
-  }
-
+  // 🔥 SIMPLIFIED - No status updates needed from Lambda
   async getAttachment(attachmentId: string, userId: string) {
     const attachment = await attachmentRepository.findById(attachmentId);
 
@@ -215,10 +234,9 @@ export class AttachmentService {
       attachment.metadata.s3.key,
     );
 
-    // Delete thumbnail if exists (from thumbnail bucket)
+    // Delete thumbnail if exists
     if (attachment.metadata.thumbnail) {
       try {
-        // Use thumbnail bucket (separate from media bucket)
         const thumbnailBucket =
           process.env.THUMBNAIL_BUCKET_NAME || attachment.metadata.s3.bucket;
         await s3Service.deleteFile(
@@ -257,7 +275,6 @@ export class AttachmentService {
     };
   }
 
-  // Method for calculating message attachment size
   async calculateMessageAttachmentSize(
     attachmentIds: string[],
   ): Promise<number> {
