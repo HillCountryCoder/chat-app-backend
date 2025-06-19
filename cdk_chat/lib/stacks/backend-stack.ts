@@ -8,35 +8,14 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
-import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as s3n from "aws-cdk-lib/aws-s3-notifications";
-import * as iam from "aws-cdk-lib/aws-iam";
-import * as ssm from "aws-cdk-lib/aws-ssm";
-import * as crypto from "crypto";
 import { Construct } from "constructs";
 import { Stage } from "../stage";
 import { Duration } from "aws-cdk-lib";
-import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
+import * as logs from "aws-cdk-lib/aws-logs";
 export interface ChatBackendStackProps extends cdk.StackProps {
   stage: Stage;
 }
-async function getExistingParameter(paramName: string): Promise<string | null> {
-  const ssmClient = new SSMClient({
-    region: process.env.CDK_DEFAULT_REGION || "us-east-1",
-  });
-  try {
-    const response = await ssmClient.send(
-      new GetParameterCommand({
-        Name: paramName,
-        WithDecryption: true,
-      }),
-    );
-    return response.Parameter?.Value || null;
-  } catch (error) {
-    // Parameter doesn't exist or other error
-    return null;
-  }
-}
+
 export class ChatBackendStack extends cdk.Stack {
   public readonly ecsService: ecs.FargateService;
   public readonly ecrRepository: ecr.Repository;
@@ -44,12 +23,20 @@ export class ChatBackendStack extends cdk.Stack {
   public readonly mediaBucket: s3.Bucket;
   public readonly thumbnailBucket: s3.Bucket;
   public readonly mediaDistribution: cloudfront.Distribution;
-
+  private logGroup: logs.LogGroup;
   constructor(scope: Construct, id: string, props: ChatBackendStackProps) {
     super(scope, id, props);
     const isProduction = props.stage === Stage.PRODUCTION;
     const appName = "ChatBackendApp";
-
+    this.logGroup = new logs.LogGroup(this, "ChatBackendLogGroup", {
+      logGroupName: `/ecs/chat-backend-${props.stage}`,
+      retention: isProduction
+        ? logs.RetentionDays.ONE_MONTH
+        : logs.RetentionDays.ONE_WEEK,
+      removalPolicy: isProduction
+        ? cdk.RemovalPolicy.RETAIN
+        : cdk.RemovalPolicy.DESTROY,
+    });
     // Create a VPC - COST REDUCTION: Single AZ, no NAT Gateways
     const vpc = new ec2.Vpc(this, "ChatBackendVPC", {
       maxAzs: 1,
@@ -101,10 +88,11 @@ export class ChatBackendStack extends cdk.Stack {
           exposedHeaders: ["ETag"],
         },
       ],
+      // Simplified lifecycle - no quarantine needed
       lifecycleRules: [
         {
-          prefix: "quarantine/",
-          expiration: Duration.days(7),
+          // Clean up incomplete multipart uploads after 1 day
+          abortIncompleteMultipartUploadAfter: Duration.days(1),
         },
       ],
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -171,63 +159,6 @@ export class ChatBackendStack extends cdk.Stack {
         },
       },
     });
-
-    const apiKeyParamName = `/chat-app/${props.stage}/api-key`;
-    const existingApiKey = ssm.StringParameter.valueFromLookup(
-      this,
-      apiKeyParamName,
-    );
-    // Check for existing parameter in SSM (for redeployments)
-    let apiKeyValue =
-      process.env.API_KEY ||
-      (existingApiKey !== "dummy-value-for-" + apiKeyParamName
-        ? existingApiKey
-        : crypto.randomBytes(24).toString("hex"));
-
-    // Store in SSM Parameter Store for persistent access
-    const apiKeyParam = new ssm.StringParameter(this, "ChatApiKeyParameter", {
-      parameterName: apiKeyParamName,
-      stringValue: apiKeyValue,
-      tier: ssm.ParameterTier.STANDARD,
-      description: "API key for Lambda-backend communication",
-    });
-
-    // Create Lambda for virus scanning
-    const virusScanLambda = new lambda.Function(this, "VirusScanner", {
-      runtime: lambda.Runtime.NODEJS_18_X,
-      handler: "index.handler",
-      code: lambda.Code.fromAsset("lambda/virus-scanner"),
-      timeout: Duration.minutes(2),
-      memorySize: 512,
-      environment: {
-        MEDIA_BUCKET_NAME: this.mediaBucket.bucketName,
-        API_ENDPOINT: `https://api.hillcountrycoders10.com`,
-        API_KEY_PARAMETER_NAME: apiKeyParamName, // Use parameter name instead of raw value
-      },
-    });
-    // Grant Lambda read access to the parameter
-    apiKeyParam.grantRead(virusScanLambda);
-
-    // Add S3 notification to trigger virus scanner Lambda
-    this.mediaBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(virusScanLambda),
-    );
-
-    // Grant permissions to the virus scanner
-    this.mediaBucket.grantRead(virusScanLambda);
-
-    // Grant additional permissions to move files to quarantine
-    virusScanLambda.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["s3:PutObject", "s3:DeleteObject"],
-        resources: [
-          `${this.mediaBucket.bucketArn}/*`,
-          `${this.mediaBucket.bucketArn}/quarantine/*`,
-        ],
-      }),
-    );
-
     // Reference existing secrets instead of creating new ones
     const mongoDbSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
@@ -272,7 +203,10 @@ export class ChatBackendStack extends cdk.Stack {
           MONGODB_URI: ecs.Secret.fromSecretsManager(mongoDbSecret, "url"),
           REDIS_URI: ecs.Secret.fromSecretsManager(redisSecret, "url"),
         },
-        logging: ecs.LogDrivers.awsLogs({ streamPrefix: "chat-backend" }),
+        logging: ecs.LogDrivers.awsLogs({
+          logGroup: this.logGroup,
+          streamPrefix: "chat-backend",
+        }),
       });
 
       // Add port mapping
