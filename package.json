@@ -22,15 +22,14 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-	"generate-api-key": "node scripts/generate-api-key.js",
 	"migrate:phase2": "ts-node scripts/migrate-phase2.ts",
-	 "test:attachment": "vitest run src/tests/**/*attachment*",
-  "test:attachment:watch": "vitest src/tests/**/*attachment*",
-  "test:s3": "vitest run src/tests/**/*s3*",
-  "test:real": "INTEGRATION_TEST_REAL=true vitest run src/tests/integration/real-data/",
-  "test:performance": "vitest run src/tests/**/*performance*",
-  "test:media": "vitest run src/tests/**/*{attachment,s3,media}*",
-  "test:media:watch": "vitest src/tests/**/*{attachment,s3,media}*"
+	"test:attachment": "vitest run src/tests/**/*attachment*",
+	"test:attachment:watch": "vitest src/tests/**/*attachment*",
+	"test:s3": "vitest run src/tests/**/*s3*",
+	"test:real": "INTEGRATION_TEST_REAL=true vitest run src/tests/integration/real-data/",
+	"test:performance": "vitest run src/tests/**/*performance*",
+	"test:media": "vitest run src/tests/**/*{attachment,s3,media}*",
+	"test:media:watch": "vitest src/tests/**/*{attachment,s3,media}*"
   },
   "keywords": [
     "chat",
