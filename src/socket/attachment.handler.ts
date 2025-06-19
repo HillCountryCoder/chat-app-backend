@@ -1,11 +1,13 @@
 import { Server, Socket } from "socket.io";
 import { createLogger, createSocketLogger } from "../common/logger";
 import { z } from "zod";
+import { attachmentRepository } from "../repositories";
 
 const logger = createSocketLogger(createLogger("attachment-socket"));
 const loggerWinston = createLogger("attachment-handler-logger");
 const subscribeSchema = z.object({
   attachmentIds: z.array(z.string()).min(1).max(10),
+  requestCurrentStatus: z.boolean().optional(),
 });
 
 export const registerAttachmentHandlers = (
@@ -13,9 +15,10 @@ export const registerAttachmentHandlers = (
   socket: Socket,
   userId: string,
 ) => {
-  socket.on("subscribe_attachment_updates", (data, callback) => {
+  socket.on("subscribe_attachment_updates", async (data, callback) => {
     try {
-      const { attachmentIds } = subscribeSchema.parse(data);
+      const { attachmentIds, requestCurrentStatus } =
+        subscribeSchema.parse(data);
 
       // Join attachment-specific rooms for real-time updates
       attachmentIds.forEach((attachmentId: string) => {
@@ -25,6 +28,50 @@ export const registerAttachmentHandlers = (
       logger.event(socket.id, "subscribed_to_attachment_updates", {
         attachmentCount: attachmentIds.length,
       });
+      if (requestCurrentStatus) {
+        try {
+          const attachmentStatuses = await Promise.all(
+            attachmentIds.map(async (attachmentId) => {
+              try {
+                const attachment = await attachmentRepository.findById(
+                  attachmentId,
+                );
+                return attachment
+                  ? {
+                      attachmentId,
+                      status: attachment.status,
+                      metadata: attachment.metadata,
+                    }
+                  : null;
+              } catch (error) {
+                loggerWinston.warn(
+                  `Failed to get status for attachment ${attachmentId}:`,
+                  error,
+                );
+                return null;
+              }
+            }),
+          );
+
+          const validStatuses = attachmentStatuses.filter(Boolean);
+
+          if (validStatuses.length > 0) {
+            socket.emit("attachment_initial_status", {
+              attachmentStatuses: validStatuses,
+            });
+
+            loggerWinston.debug("Sent initial attachment statuses", {
+              socketId: socket.id,
+              attachmentCount: validStatuses.length,
+            });
+          }
+        } catch (error) {
+          loggerWinston.error(
+            "Failed to fetch initial attachment statuses:",
+            error,
+          );
+        }
+      }
 
       if (typeof callback === "function") {
         callback({ success: true, subscribedTo: attachmentIds.length });
