@@ -243,6 +243,10 @@ export class FileValidationService {
   /**
    * Validate file name for suspicious patterns
    */
+  /**
+   * Validate file name for suspicious patterns
+   * IMPROVED VERSION: Better detection of multiple extensions vs legitimate dots
+   */
   private validateFileName(fileName: string): {
     isValid: boolean;
     reason?: string;
@@ -261,14 +265,60 @@ export class FileValidationService {
       }
     }
 
-    // Check for multiple extensions (e.g., file.txt.exe)
+    // 🔥 IMPROVED: Better multiple extension detection
+    // Focus on actual file extensions, not all dots
+    const suspiciousExtensionPatterns = [
+      // Double extensions like .txt.exe, .pdf.scr, etc.
+      /\.(txt|pdf|doc|docx|jpg|jpeg|png|gif|zip)\.(exe|scr|bat|cmd|com|pif|vbs|js|jar|app)$/i,
+      // Multiple executable extensions
+      /\.(exe|scr|bat|cmd|com|pif)\.(exe|scr|bat|cmd|com|pif)$/i,
+      // Common disguises
+      /\.(jpg|jpeg|png|gif|pdf|txt|doc|docx)\.exe$/i,
+      /\.(zip|rar|7z)\.exe$/i,
+    ];
+
+    for (const pattern of suspiciousExtensionPatterns) {
+      if (pattern.test(fileName)) {
+        return {
+          isValid: false,
+          reason: "File has suspicious double extension pattern",
+          severity: "block",
+        };
+      }
+    }
+
+    // 🔥 ALTERNATIVE: Count actual extensions more intelligently
+    // Split on dots and check the last few parts for known extensions
     const parts = fileName.split(".");
-    if (parts.length > 3) {
-      return {
-        isValid: false,
-        reason: "File name has too many extensions, which is suspicious",
-        severity: "block",
-      };
+    if (parts.length > 2) {
+      // Get the last 2 parts (potential extensions)
+      const lastTwoParts = parts.slice(-2);
+      const potentialExtensions = lastTwoParts.map(
+        (part) => `.${part.toLowerCase()}`,
+      );
+
+      // Check if we have two known file extensions in sequence
+      const knownExtensions = [
+        ...FileValidationService.ALLOWED_EXTENSIONS,
+        ...FileValidationService.BLOCKED_EXTENSIONS,
+      ];
+
+      let extensionCount = 0;
+      for (const ext of potentialExtensions) {
+        if (knownExtensions.includes(ext)) {
+          extensionCount++;
+        }
+      }
+
+      // If we have 2 known extensions, it's suspicious
+      if (extensionCount >= 2) {
+        return {
+          isValid: false,
+          reason:
+            "File appears to have multiple file extensions, which is suspicious",
+          severity: "block",
+        };
+      }
     }
 
     // Check for extremely long names
@@ -276,6 +326,24 @@ export class FileValidationService {
       return {
         isValid: false,
         reason: "File name is too long",
+        severity: "block",
+      };
+    }
+
+    // 🔥 ADDITIONAL: Check for hidden file attempts
+    if (fileName.startsWith(".") && fileName !== ".htaccess") {
+      return {
+        isValid: false,
+        reason: "Hidden files are not allowed",
+        severity: "block",
+      };
+    }
+
+    // Check for null bytes or other dangerous characters
+    if (fileName.includes("\0") || fileName.includes("\x00")) {
+      return {
+        isValid: false,
+        reason: "File name contains null bytes",
         severity: "block",
       };
     }
