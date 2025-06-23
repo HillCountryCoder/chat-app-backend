@@ -114,7 +114,6 @@ export class AttachmentService {
       throw new NotFoundError("user");
     }
 
-    // 🔥 VERIFY FILE EXISTS IN S3 (replaces Lambda race condition)
     try {
       const fileMetadata = await s3Service.getFileMetadata(s3Bucket, s3Key);
 

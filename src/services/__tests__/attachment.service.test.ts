@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/services/__tests__/attachment.service.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AttachmentService } from "../attachment.service";
@@ -73,6 +74,7 @@ describe("AttachmentService", () => {
           bucket: mockS3Response.bucket,
           key: mockS3Response.key,
           maxFileSize: mockData.fileSize,
+          validated: true,
         },
       });
 
@@ -151,6 +153,13 @@ describe("AttachmentService", () => {
       const mockUser = { _id: "user123", email: "test@test.com" };
       vi.mocked(userRepository.findById).mockResolvedValue(mockUser as any);
 
+      // Mock S3 file verification
+      vi.mocked(s3Service.getFileMetadata).mockResolvedValue({
+        ContentLength: mockData.fileSize,
+        ContentType: mockData.fileType,
+        ETag: mockData.eTag,
+      } as any);
+
       const mockAttachment = {
         _id: "attachment123",
         name: mockData.fileName,
@@ -158,7 +167,7 @@ describe("AttachmentService", () => {
         type: mockData.fileType,
         size: mockData.fileSize,
         uploadedBy: mockData.userId,
-        status: "processing",
+        status: "ready",
       };
       vi.mocked(attachmentRepository.create).mockResolvedValue(
         mockAttachment as any,
@@ -167,13 +176,17 @@ describe("AttachmentService", () => {
       const result = await attachmentService.completeUpload(mockData);
 
       expect(result).toEqual(mockAttachment);
+      expect(s3Service.getFileMetadata).toHaveBeenCalledWith(
+        mockData.s3Bucket,
+        mockData.s3Key,
+      );
       expect(attachmentRepository.create).toHaveBeenCalledWith({
         name: mockData.fileName,
         url: mockData.cdnUrl,
         type: mockData.fileType,
         size: mockData.fileSize,
         uploadedBy: mockData.userId,
-        status: "processing",
+        status: "ready",
         metadata: {
           s3: {
             bucket: mockData.s3Bucket,
@@ -181,6 +194,11 @@ describe("AttachmentService", () => {
             contentType: mockData.fileType,
             eTag: mockData.eTag,
             encrypted: false,
+          },
+          validation: {
+            validatedAt: expect.any(Date),
+            method: "backend-validation",
+            deepValidation: false,
           },
         },
       });
@@ -193,50 +211,26 @@ describe("AttachmentService", () => {
         NotFoundError,
       );
     });
-  });
 
-  describe("updateStatus", () => {
-    const mockData = {
-      fileKey: "users/user123/file123/test.jpg",
-      status: "ready" as const,
-      metadata: {
-        thumbnail: {
-          s3Key: "users/user123/file123/thumb_test.jpg",
-          url: "https://cdn.domain.com/thumbnail",
-          width: 320,
-          height: 240,
-        },
-      },
-    };
+    it("should throw BadRequestError for file upload verification failure", async () => {
+      const mockUser = { _id: "user123", email: "test@test.com" };
+      vi.mocked(userRepository.findById).mockResolvedValue(mockUser as any);
 
-    it("should update attachment status successfully", async () => {
-      const mockAttachment = {
-        _id: "attachment123",
-        status: "ready",
-        metadata: mockData.metadata,
-      };
-      vi.mocked(attachmentRepository.updateStatus).mockResolvedValue(
-        mockAttachment as any,
+      // Mock repository.create to throw error (simulating verification failure)
+      vi.mocked(attachmentRepository.create).mockRejectedValue(
+        new BadRequestError("File upload verification failed"),
       );
 
-      const result = await attachmentService.updateStatus(mockData);
-
-      expect(result).toEqual(mockAttachment);
-      expect(attachmentRepository.updateStatus).toHaveBeenCalledWith(
-        mockData.fileKey,
-        mockData.status,
-        mockData.metadata,
-      );
-    });
-
-    it("should throw NotFoundError if attachment not found", async () => {
-      vi.mocked(attachmentRepository.updateStatus).mockResolvedValue(null);
-
-      await expect(attachmentService.updateStatus(mockData)).rejects.toThrow(
-        NotFoundError,
+      await expect(attachmentService.completeUpload(mockData)).rejects.toThrow(
+        BadRequestError,
       );
     });
   });
+
+  // Remove updateStatus tests since the method was removed
+  // describe("updateStatus", () => {
+  //   ... removed tests
+  // });
 
   describe("getDownloadUrl", () => {
     it("should generate download URL for accessible attachment", async () => {

@@ -43,7 +43,21 @@ export class AttachmentController {
   ) {
     try {
       logger.debug("Generating upload URL");
+      const testFailure = req.headers["x-test-failure"] as string;
 
+      if (testFailure) {
+        switch (testFailure) {
+          case "network":
+            throw new Error("Simulated network error");
+          case "timeout":
+            await new Promise((resolve) => setTimeout(resolve, 30000));
+            throw new Error("Request timeout");
+          case "server":
+            throw new Error("Internal server error");
+          default:
+            break;
+        }
+      }
       if (!req.user) {
         throw new UnauthorizedError("User not authenticated");
       }

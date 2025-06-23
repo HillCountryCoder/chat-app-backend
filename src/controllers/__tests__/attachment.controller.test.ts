@@ -1,17 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { AttachmentController } from "../attachment.controller";
 import { attachmentService } from "../../services/attachment.service";
-import {
-  ValidationError,
-  UnauthorizedError,
-  BadRequestError,
-} from "../../common/errors";
+import { ValidationError, UnauthorizedError } from "../../common/errors";
 import { AuthenticatedRequest } from "../../common/types/auth.type";
 
 // Mock dependencies
 vi.mock("../../services/attachment.service");
+vi.mock("../../socket", () => ({
+  getSocketServer: vi.fn().mockReturnValue(null),
+}));
+vi.mock("../../socket/attachment.handler", () => ({
+  emitAttachmentStatusUpdate: vi.fn(),
+}));
 vi.mock("../../common/logger", () => ({
   createLogger: vi.fn().mockReturnValue({
     info: vi.fn(),
@@ -39,6 +41,7 @@ describe("AttachmentController", () => {
       user: { _id: "user123", email: "test@test.com" } as any,
       body: {},
       params: {},
+      headers: {}, // Add missing headers property
     };
 
     mockResponse = {
@@ -61,11 +64,12 @@ describe("AttachmentController", () => {
         uploadId: "upload123",
         presignedUrl: "https://s3.amazonaws.com/upload-url",
         cdnUrl: "https://cdn.domain.com/file",
-        thumbnailUpload: undefined, // Fix: Add missing property
+        thumbnailUpload: undefined,
         metadata: {
           bucket: "test-bucket",
           key: "test-key",
           maxFileSize: 1024000,
+          validated: true,
         },
       };
 
@@ -111,6 +115,7 @@ describe("AttachmentController", () => {
           bucket: "test-bucket",
           key: "test-key",
           maxFileSize: 1024000,
+          validated: true,
         },
       };
 
@@ -179,10 +184,6 @@ describe("AttachmentController", () => {
     });
 
     it("should validate file size limits", async () => {
-      vi.mocked(attachmentService.generateUploadUrl).mockClear();
-      vi.mocked(attachmentService.generateUploadUrl).mockRejectedValue(
-        new BadRequestError("File size exceeds maximum limit of 25 MB"),
-      );
       mockRequest.body = {
         fileName: "test.jpg",
         fileType: "image/jpeg",
@@ -194,7 +195,8 @@ describe("AttachmentController", () => {
         mockResponse as Response,
         mockNext,
       );
-      expect(mockNext).toHaveBeenCalledWith(expect.any(BadRequestError));
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(ValidationError));
     });
 
     it("should validate file type format", async () => {
@@ -230,7 +232,10 @@ describe("AttachmentController", () => {
         _id: "attachment123",
         name: "test.jpg",
         url: "https://cdn.domain.com/file",
-        status: "processing",
+        status: "ready",
+        uploadedBy: "user123",
+        size: 1024000,
+        metadata: {},
       };
 
       mockRequest.body = mockRequestBody;
@@ -287,77 +292,8 @@ describe("AttachmentController", () => {
     });
   });
 
-  describe("updateStatus", () => {
-    it("should update attachment status successfully", async () => {
-      const mockRequestBody = {
-        fileKey: "test-key",
-        status: "ready",
-        metadata: {
-          thumbnail: {
-            s3Key: "thumb-key",
-            url: "https://cdn.domain.com/thumb",
-            width: 320,
-            height: 240,
-          },
-        },
-      };
-
-      const mockAttachment = {
-        _id: "attachment123",
-        status: "ready",
-      };
-
-      mockRequest.body = mockRequestBody;
-      vi.mocked(attachmentService.updateStatus).mockResolvedValue(
-        mockAttachment as any,
-      );
-
-      await AttachmentController.updateStatus(
-        mockRequest as Request,
-        mockResponse as Response,
-        mockNext,
-      );
-
-      expect(attachmentService.updateStatus).toHaveBeenCalledWith(
-        mockRequestBody,
-      );
-      expect(mockResponse.status).toHaveBeenCalledWith(200);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        attachment: mockAttachment,
-      });
-    });
-
-    it("should validate status enum values", async () => {
-      mockRequest.body = {
-        fileKey: "test-key",
-        status: "invalid-status", // Invalid status
-      };
-
-      await AttachmentController.updateStatus(
-        mockRequest as Request,
-        mockResponse as Response,
-        mockNext,
-      );
-
-      expect(mockNext).toHaveBeenCalledWith(expect.any(ValidationError));
-    });
-
-    it("should handle missing fileKey", async () => {
-      mockRequest.body = {
-        status: "ready",
-        // Missing fileKey
-      };
-
-      await AttachmentController.updateStatus(
-        mockRequest as Request,
-        mockResponse as Response,
-        mockNext,
-      );
-
-      expect(mockNext).toHaveBeenCalledWith(expect.any(ValidationError));
-    });
-  });
+  // Remove updateStatus tests since the method was removed
+  // describe("updateStatus", () => { ... });
 
   describe("getDownloadUrl", () => {
     it("should get download URL successfully", async () => {

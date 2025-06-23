@@ -57,57 +57,62 @@ describe("AttachmentRepository", () => {
     it("should find attachments by uploader ID", async () => {
       const otherUserId = new mongoose.Types.ObjectId().toString();
 
-      // Create attachments for test user
-      await Attachment.create([
-        {
-          name: "file1.jpg",
-          url: "https://cdn.domain.com/file1.jpg",
-          type: "image/jpeg",
-          size: 1024,
-          uploadedBy: testUserId,
-          status: "ready",
-          metadata: {
-            s3: {
-              bucket: "test-bucket",
-              key: `users/${testUserId}/file1.jpg`,
-              contentType: "image/jpeg",
-              encrypted: false,
-            },
+      // Create attachments for test user with different timestamps
+      const file1 = await Attachment.create({
+        name: "file1.jpg",
+        url: "https://cdn.domain.com/file1.jpg",
+        type: "image/jpeg",
+        size: 1024,
+        uploadedBy: testUserId,
+        status: "ready",
+        uploadedAt: new Date("2023-01-01T10:00:00Z"), // Earlier timestamp
+        metadata: {
+          s3: {
+            bucket: "test-bucket",
+            key: `users/${testUserId}/file1.jpg`,
+            contentType: "image/jpeg",
+            encrypted: false,
           },
         },
-        {
-          name: "file2.jpg",
-          url: "https://cdn.domain.com/file2.jpg",
-          type: "image/jpeg",
-          size: 2048,
-          uploadedBy: testUserId,
-          status: "ready",
-          metadata: {
-            s3: {
-              bucket: "test-bucket",
-              key: `users/${testUserId}/file2.jpg`,
-              contentType: "image/jpeg",
-              encrypted: false,
-            },
+      });
+
+      // Wait a bit to ensure different timestamp
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const file2 = await Attachment.create({
+        name: "file2.jpg",
+        url: "https://cdn.domain.com/file2.jpg",
+        type: "image/jpeg",
+        size: 2048,
+        uploadedBy: testUserId,
+        status: "ready",
+        uploadedAt: new Date("2023-01-01T11:00:00Z"), // Later timestamp
+        metadata: {
+          s3: {
+            bucket: "test-bucket",
+            key: `users/${testUserId}/file2.jpg`,
+            contentType: "image/jpeg",
+            encrypted: false,
           },
         },
-        {
-          name: "other-file.jpg",
-          url: "https://cdn.domain.com/other-file.jpg",
-          type: "image/jpeg",
-          size: 1024,
-          uploadedBy: otherUserId,
-          status: "ready",
-          metadata: {
-            s3: {
-              bucket: "test-bucket",
-              key: `users/${otherUserId}/other-file.jpg`,
-              contentType: "image/jpeg",
-              encrypted: false,
-            },
+      });
+
+      await Attachment.create({
+        name: "other-file.jpg",
+        url: "https://cdn.domain.com/other-file.jpg",
+        type: "image/jpeg",
+        size: 1024,
+        uploadedBy: otherUserId,
+        status: "ready",
+        metadata: {
+          s3: {
+            bucket: "test-bucket",
+            key: `users/${otherUserId}/other-file.jpg`,
+            contentType: "image/jpeg",
+            encrypted: false,
           },
         },
-      ]);
+      });
 
       const result = await attachmentRepository.findByUploader(testUserId);
 
