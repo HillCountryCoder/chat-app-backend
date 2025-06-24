@@ -1,26 +1,32 @@
-// src/services/direct-message.service.ts - Enhanced for Phase 3
-import { createLogger } from "../common/logger";
+// Updated direct-message.service.ts with Rich Content Support
+import mongoose from "mongoose";
+import { DirectMessageInterface } from "../models/direct-message.model";
+import { ContentType } from "../models/message.model";
 import { directMessageRepository } from "../repositories/direct-message.repository";
 import { messageRepository } from "../repositories/message.repository";
+import { unreadMessagesService } from "./unread-messages.service";
+import { messageService } from "./message.service";
+import { attachmentService } from "./attachment.service";
 import {
   NotFoundError,
   ForbiddenError,
   ValidationError,
 } from "../common/errors";
-import { DirectMessageInterface } from "../models";
-import mongoose from "mongoose";
-import { unreadMessagesService } from "./unread-messages.service";
-import { userService } from "./user.service";
-import { messageService } from "./message.service";
-import { attachmentService } from "./attachment.service";
-import {
-  MAX_ATTACHMENTS_PER_MESSAGE,
-  MAX_TOTAL_MESSAGE_SIZE,
-} from "../constants";
+import { createLogger } from "../common/logger";
 
 const logger = createLogger("direct-message-service");
 
-// Constants for Phase 3
+// Constants for Phase 3 validations
+const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+const MAX_TOTAL_MESSAGE_SIZE = 25 * 1024 * 1024; // 25MB
+
+// Type for Plate.js Value
+type PlateValue = Array<{
+  id?: string;
+  type: string;
+  children: Array<{ text: string; [key: string]: any }>;
+  [key: string]: any;
+}>;
 
 export class DirectMessageService {
   private static instance: DirectMessageService;
@@ -32,28 +38,6 @@ export class DirectMessageService {
       DirectMessageService.instance = new DirectMessageService();
     }
     return DirectMessageService.instance;
-  }
-
-  async getOrCreateDirectMessage(userId1: string, userId2: string) {
-    // Check if both users exist
-    await userService.checkIfUsersExists([userId1, userId2]);
-
-    let directMessage = await this.getDirectMessageByParticipantIds(
-      userId1,
-      userId2,
-    );
-    // If none exists, create a new one
-    if (!directMessage) {
-      logger.info(
-        `Creating new direct message between users ${userId1} and ${userId2}`,
-      );
-      directMessage = await directMessageRepository.create({
-        participantIds: [userId1, userId2].sort(),
-        lastActivity: new Date(),
-      });
-    }
-
-    return directMessage;
   }
 
   async getDirectMessageById(
@@ -69,25 +53,23 @@ export class DirectMessageService {
     }
 
     // Check if user is a participant
-    if (
-      !directMessage.participantIds.some(
-        (id) =>
-          id.toString() === userId ||
-          (id instanceof mongoose.Types.ObjectId && id.equals(userId)),
-      )
-    ) {
-      throw new ForbiddenError("You don't have access to this conversation");
+    const isParticipant = directMessage.participantIds.some(
+      (id) => id.toString() === userId,
+    );
+
+    if (!isParticipant) {
+      throw new ForbiddenError("Access denied to this direct message");
     }
 
     return directMessage;
   }
 
-  async getUserDirectMessages(userId: string) {
+  async getUserDirectMessages(userId: string): Promise<any[]> {
     const directMessages = await directMessageRepository.findAllByUserId(
       userId,
     );
 
-    // For each DM, get the most recent message
+    // Get the last message for each direct message with populated attachments
     const directMessagesWithLastMessage = await Promise.all(
       directMessages.map(async (dm) => {
         const messages = await messageRepository.findByDirectMessageId(
@@ -95,9 +77,14 @@ export class DirectMessageService {
           { limit: 1 },
         );
 
+        // Populate attachments for the last message if it exists
+        const populatedMessages =
+          await messageService.populateMessageAttachments(messages);
+
         return {
           ...dm.toObject(),
-          lastMessage: messages.length > 0 ? messages[0] : null,
+          lastMessage:
+            populatedMessages.length > 0 ? populatedMessages[0] : null,
         };
       }),
     );
@@ -127,12 +114,37 @@ export class DirectMessageService {
     return await messageService.populateMessageAttachments(messages);
   }
 
-  // Enhanced sendMessage method for Phase 3
+  private async getOrCreateDirectMessage(
+    senderId: string,
+    receiverId: string,
+  ): Promise<DirectMessageInterface> {
+    // Check if a direct message already exists between these users
+    const existingDirectMessage =
+      await directMessageRepository.findByParticipants(senderId, receiverId);
+
+    if (existingDirectMessage) {
+      return existingDirectMessage;
+    }
+
+    // Create a new direct message
+    const newDirectMessage = await directMessageRepository.create({
+      participantIds: [
+        new mongoose.Types.ObjectId(senderId),
+        new mongoose.Types.ObjectId(receiverId),
+      ],
+    });
+
+    return newDirectMessage;
+  }
+
+  // Updated sendMessage method with rich content support
   async sendMessage(data: {
     senderId: string;
     receiverId?: string;
     directMessageId?: string;
     content: string;
+    richContent?: PlateValue; // Add rich content support
+    contentType?: ContentType; // Add content type support
     attachmentIds?: string[];
     replyToId?: string;
   }) {
@@ -141,9 +153,18 @@ export class DirectMessageService {
       receiverId,
       directMessageId,
       content,
+      richContent,
+      contentType,
       attachmentIds = [],
       replyToId,
     } = data;
+
+    logger.debug("Sending direct message", {
+      senderId,
+      hasRichContent: !!richContent,
+      contentType,
+      attachmentCount: attachmentIds.length,
+    });
 
     // Phase 3 validations
     await this.validateMessageWithAttachments(attachmentIds, senderId);
@@ -166,10 +187,12 @@ export class DirectMessageService {
     // Verify the direct message exists and the sender is a participant
     const directMessage = await this.getDirectMessageById(dmId, senderId);
 
-    // Create the message with attachments
+    // Create the message with attachments and rich content
     const message = await messageService.createMessageWithAttachments({
       senderId,
       content,
+      richContent,
+      contentType,
       attachmentIds,
       directMessageId: dmId,
       replyToId,
@@ -190,10 +213,12 @@ export class DirectMessageService {
       ),
     );
 
-    logger.info("Direct message sent with attachments", {
+    logger.info("Direct message sent successfully", {
       messageId: message.messageId,
       dmId,
       senderId,
+      contentType: message.contentType,
+      hasRichContent: !!richContent,
       attachmentCount: attachmentIds.length,
       hasMedia: message.hasMedia,
       totalAttachmentSize: message.totalAttachmentSize,
@@ -286,6 +311,13 @@ export class DirectMessageService {
     await this.getDirectMessageById(directMessageId, userId);
 
     return await messageService.getAttachmentStatistics(directMessageId, "dm");
+  }
+
+  // New method: Get rich content statistics
+  async getRichContentStats(directMessageId: string, userId: string) {
+    await this.getDirectMessageById(directMessageId, userId);
+
+    return await messageService.getRichContentStatistics(directMessageId, "dm");
   }
 }
 

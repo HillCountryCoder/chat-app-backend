@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/services/message.service.ts - Enhanced for Phase 3
 import { ContentType, MessageInterface, Reaction } from "../models";
 import { messageRepository } from "../repositories/message.repository";
 import {
@@ -15,6 +14,14 @@ import { attachmentService } from "./attachment.service";
 import mongoose from "mongoose";
 
 const logger = createLogger("message-service");
+
+// Type for Plate.js Value
+type PlateValue = Array<{
+  id?: string;
+  type: string;
+  children: Array<{ text: string; [key: string]: any }>;
+  [key: string]: any;
+}>;
 
 export class MessageService {
   private static instance: MessageService;
@@ -59,9 +66,12 @@ export class MessageService {
     }
   }
 
+  // Updated method to support rich content
   async createMessageWithAttachments(data: {
     senderId: string;
     content: string;
+    richContent?: PlateValue; // Add rich content support
+    contentType?: ContentType; // Add content type
     attachmentIds?: string[];
     channelId?: string;
     directMessageId?: string;
@@ -71,6 +81,8 @@ export class MessageService {
     const {
       senderId,
       content,
+      richContent,
+      contentType,
       attachmentIds = [],
       channelId,
       directMessageId,
@@ -78,11 +90,35 @@ export class MessageService {
       replyToId,
     } = data;
 
+    // Validate rich content if provided
+    if (richContent) {
+      this.validateRichContent(richContent);
+    }
+
+    // Determine content type automatically if not provided
+    let finalContentType = contentType;
+    if (!finalContentType) {
+      finalContentType = richContent ? ContentType.RICH : ContentType.TEXT;
+    }
+
+    // Validate content type consistency
+    if (richContent && finalContentType !== ContentType.RICH) {
+      throw new ValidationError(
+        "Content type must be 'rich' when rich content is provided"
+      );
+    }
+
+    if (!richContent && finalContentType === ContentType.RICH) {
+      throw new ValidationError(
+        "Rich content must be provided when content type is 'rich'"
+      );
+    }
+
     // Calculate total attachment size if attachments provided
     let totalSize = 0;
     if (attachmentIds.length > 0) {
       // Validate all attachments are ready and owned by sender
-      this.validateAttachmentAccess(attachmentIds, senderId);
+      await this.validateAttachmentAccess(attachmentIds, senderId);
 
       totalSize = await this.calculateMessageSize(attachmentIds);
       if (totalSize <= 0) {
@@ -100,7 +136,8 @@ export class MessageService {
       directMessageId,
       threadId,
       content,
-      contentType: ContentType.TEXT,
+      richContent: richContent || undefined,
+      contentType: finalContentType,
       attachments: attachmentIds,
       hasMedia: attachmentIds.length > 0,
       totalAttachmentSize: totalSize > 0 ? totalSize : undefined,
@@ -111,11 +148,59 @@ export class MessageService {
 
     logger.info("Created message with attachments", {
       messageId: message.messageId,
+      contentType: finalContentType,
+      hasRichContent: !!richContent,
       attachmentCount: attachmentIds.length,
       totalSize,
     });
 
     return message;
+  }
+
+  // Validate rich content format
+  private validateRichContent(richContent: any): void {
+    if (!Array.isArray(richContent)) {
+      throw new ValidationError("Rich content must be an array");
+    }
+
+    // Validate each node in the rich content
+    for (const node of richContent) {
+      if (typeof node !== 'object' || node === null) {
+        throw new ValidationError("Each rich content node must be an object");
+      }
+
+      if (!node.type || typeof node.type !== 'string') {
+        throw new ValidationError("Each rich content node must have a type");
+      }
+
+      if (!Array.isArray(node.children)) {
+        throw new ValidationError("Each rich content node must have children array");
+      }
+
+      // Validate children
+      for (const child of node.children) {
+        if (typeof child !== 'object' || child === null) {
+          throw new ValidationError("Each child must be an object");
+        }
+        
+        // Text nodes must have text property
+        if ('text' in child && typeof child.text !== 'string') {
+          throw new ValidationError("Text nodes must have string text property");
+        }
+      }
+    }
+  }
+
+  // Helper method to extract plain text from rich content
+  extractPlainTextFromRichContent(richContent: PlateValue): string {
+    return richContent
+      .map(node => 
+        node.children
+          ?.map(child => 'text' in child ? child.text : '')
+          .join('')
+      )
+      .join('\n')
+      .trim();
   }
 
   // Validate attachment access - helper method
@@ -220,7 +305,7 @@ export class MessageService {
         },
         {
           path: "replyTo",
-          select: "content senderId",
+          select: "content richContent contentType senderId",
           populate: {
             path: "senderId",
             select: "displayName username",
@@ -228,6 +313,52 @@ export class MessageService {
         },
       ],
     });
+  }
+
+  // Get messages with rich content statistics
+  async getRichContentStatistics(
+    conversationId: string,
+    type: "dm" | "channel" | "thread",
+  ) {
+    const matchStage: any = {};
+
+    if (type === "dm") matchStage.directMessageId = conversationId;
+    if (type === "channel") matchStage.channelId = conversationId;
+    if (type === "thread") matchStage.threadId = conversationId;
+
+    const stats = await messageRepository.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: null,
+          totalMessages: { $sum: 1 },
+          richMessages: {
+            $sum: {
+              $cond: [{ $eq: ["$contentType", "rich"] }, 1, 0]
+            }
+          },
+          plainMessages: {
+            $sum: {
+              $cond: [{ $ne: ["$contentType", "rich"] }, 1, 0]
+            }
+          },
+        },
+      },
+    ]);
+
+    return stats.length > 0
+      ? {
+          ...stats[0],
+          richContentPercentage: stats[0].totalMessages > 0
+            ? (stats[0].richMessages / stats[0].totalMessages) * 100
+            : 0
+        }
+      : {
+          totalMessages: 0,
+          richMessages: 0,
+          plainMessages: 0,
+          richContentPercentage: 0,
+        };
   }
 
   // New method: Get attachment statistics

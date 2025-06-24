@@ -23,6 +23,10 @@ router.get("/:id/messages", DirectMessageController.getMessages);
 // Mark messages as read
 router.post("/:id/read", DirectMessageController.markAsRead);
 
+router.get(
+  "/:id/stats/rich-content",
+  DirectMessageController.getRichContentStats,
+);
 // Send a new message
 router.post("/messages", DirectMessageController.sendMessage);
 

@@ -1,3 +1,4 @@
+// models/message.model.ts (Updated with Rich Content Support)
 import mongoose, { Document, Schema } from "mongoose";
 
 export enum ContentType {
@@ -6,6 +7,7 @@ export enum ContentType {
   FILE = "file",
   CODE = "code",
   SYSTEM = "system",
+  RICH = "rich", // Add new rich content type
 }
 
 export interface Mention {
@@ -28,6 +30,7 @@ export interface MessageInterface extends Document {
   threadId?: mongoose.Types.ObjectId;
   isThreadStarter?: boolean;
   content: string;
+  richContent?: any; // Store Plate.js Value object
   contentType: ContentType;
   mentions: Mention[];
   reactions: Reaction[];
@@ -95,6 +98,27 @@ const messageSchema = new Schema<MessageInterface>(
       default: false,
     },
     content: { type: String, required: true },
+    // Add rich content field - stores Plate.js Value as flexible object
+    richContent: { 
+      type: Schema.Types.Mixed,
+      validate: {
+        validator: function(value: any) {
+          // Only validate if richContent is provided
+          if (value === null || value === undefined) return true;
+          
+          // Must be an array (Plate.js Value format)
+          if (!Array.isArray(value)) return false;
+          
+          // Each item should be a node with children
+          return value.every(node => 
+            typeof node === 'object' && 
+            node !== null && 
+            Array.isArray(node.children)
+          );
+        },
+        message: 'Rich content must be a valid Plate.js Value format'
+      }
+    },
     contentType: {
       type: String,
       enum: Object.values(ContentType),
@@ -111,7 +135,7 @@ const messageSchema = new Schema<MessageInterface>(
     hasMedia: {
       type: Boolean,
       default: false,
-      index: true, // Index for performance
+      index: true,
     },
     totalAttachmentSize: {
       type: Number,
@@ -145,7 +169,7 @@ messageSchema.virtual("replyTo", {
 messageSchema.pre(["find", "findOne", "findOneAndUpdate"], function () {
   this.populate({
     path: "replyTo",
-    select: "content senderId",
+    select: "content richContent contentType senderId",
     populate: {
       path: "senderId",
       select: "displayName username",
@@ -153,11 +177,25 @@ messageSchema.pre(["find", "findOne", "findOneAndUpdate"], function () {
   });
 });
 
+// Pre-save hook to ensure data consistency
 messageSchema.pre("save", function (next) {
+  // Set hasMedia based on attachments
   this.hasMedia = this.attachments && this.attachments.length > 0;
+  
   if (this.hasMedia) {
     this.totalAttachmentSize = undefined;
   }
+
+  // Ensure content type consistency
+  if (this.richContent && this.contentType !== ContentType.RICH) {
+    this.contentType = ContentType.RICH;
+  }
+
+  // If no rich content but content type is rich, reset to text
+  if (!this.richContent && this.contentType === ContentType.RICH) {
+    this.contentType = ContentType.TEXT;
+  }
+
   next();
 });
 
@@ -165,10 +203,6 @@ messageSchema.pre("validate", function (next) {
   const hasChannel = !!this.channelId;
   const hasDirect = !!this.directMessageId;
   const hasThread = !!this.threadId;
-  // A message can be in ONE of the following:
-  // 1. A channel (main channel message)
-  // 2. A direct message
-  // 3. A thread (which is associated with a channel via the Thread model)
 
   // Exactly one of these must be defined
   const validContextCount = [hasChannel, hasDirect, hasThread].filter(
@@ -186,6 +220,7 @@ messageSchema.pre("validate", function (next) {
   }
 });
 
+// Indexes for performance
 messageSchema.index({ messageId: 1 });
 messageSchema.index({ senderId: 1 });
 messageSchema.index({ channelId: 1, createdAt: -1 });
@@ -198,6 +233,8 @@ messageSchema.index({ replyToId: 1 });
 messageSchema.index({ hasMedia: 1, createdAt: -1 });
 messageSchema.index({ channelId: 1, hasMedia: 1, createdAt: -1 });
 messageSchema.index({ directMessageId: 1, hasMedia: 1, createdAt: -1 });
+messageSchema.index({ contentType: 1 }); // Index for content type queries
+
 export const Message = mongoose.model<MessageInterface>(
   "Message",
   messageSchema,
