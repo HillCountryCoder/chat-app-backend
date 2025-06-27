@@ -273,7 +273,7 @@ export class ChatBackendStack extends cdk.Stack {
           port: "5000",
           protocol: elbv2.Protocol.HTTP,
           path: "/health",
-          interval: cdk.Duration.seconds(60),
+          interval: cdk.Duration.minutes(5),
           healthyThresholdCount: 2,
           unhealthyThresholdCount: 2,
         },

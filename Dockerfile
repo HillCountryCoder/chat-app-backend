@@ -14,6 +14,7 @@ RUN npm ci
 # Copy application source code
 COPY tsconfig.json ./
 COPY src/ ./src/
+# Only copy .env for build if needed, but don't copy to production
 COPY .env* ./
 
 # Build the application
@@ -28,20 +29,12 @@ WORKDIR /app
 # Install runtime dependencies only
 COPY package.json package-lock.json* ./
 RUN npm ci --production && \
-	# Clean npm cache
-	npm cache clean --force
+    npm cache clean --force
 
 # Copy built app from builder stage
 COPY --from=builder /app/dist/ ./dist/
-# Copy environment files
-COPY --from=builder /app/.env* ./
 # Copy necessary static files
 COPY public/ ./public/
-
-
-# Add health check endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-	CMD wget -qO- http://localhost:5000/health || exit 1
 
 # Expose port
 EXPOSE 5000
