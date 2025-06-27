@@ -6,13 +6,33 @@ import { ValidationError } from "../common/errors";
 import { z } from "zod";
 import mongoose from "mongoose";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../constants";
+import { ContentType } from "../models";
 
 const logger = createSocketLogger(createLogger("direct-message-socket"));
 const errorHandler = new ErrorHandler(createLogger("socket-error-handler"));
 
+// Define the PlateValue schema using Zod
+const plateValueSchema = z.array(
+  z
+    .object({
+      id: z.string().optional(),
+      type: z.string(),
+      children: z.array(
+        z
+          .object({
+            text: z.string(),
+          })
+          .catchall(z.any()),
+      ),
+    })
+    .catchall(z.any()),
+);
+
 const sendMessageSchema = z
   .object({
     content: z.string().min(1).max(2000),
+    richContent: plateValueSchema.optional(), // Use the schema directly
+    contentType: z.nativeEnum(ContentType).optional(), // Add this
     receiverId: z.string().optional(),
     directMessageId: z.string().optional(),
     attachmentIds: z
@@ -23,8 +43,35 @@ const sendMessageSchema = z
   })
   .refine((data) => data.receiverId || data.directMessageId, {
     message: "Either receiverId or directMessageId must be provided",
-  });
-
+  })
+  .refine(
+    (data) => {
+      if (
+        data.richContent &&
+        data.contentType &&
+        data.contentType !== ContentType.RICH
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Content type must be 'rich' when rich content is provided",
+      path: ["contentType"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.contentType === ContentType.RICH && !data.richContent) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Rich content must be provided when content type is 'rich'",
+      path: ["richContent"],
+    },
+  );
 export const registerDirectMessageHandlers = (
   io: Server,
   socket: Socket,
@@ -57,6 +104,8 @@ export const registerDirectMessageHandlers = (
         receiverId: validatedData.receiverId,
         directMessageId: validatedData.directMessageId,
         content: validatedData.content,
+        richContent: validatedData.richContent, // Add this
+        contentType: validatedData.contentType, // Add this
         attachmentIds: validatedData.attachmentIds || [],
         replyToId: validatedData.replyToId,
       });

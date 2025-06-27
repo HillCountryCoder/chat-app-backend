@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { DirectMessageController } from "../direct-message.controller";
 import { directMessageService } from "../../services/direct-message.service";
-import { Request, Response } from "express";
+import { Response } from "express";
 import { AuthenticatedRequest } from "../../common/types/auth.type";
 import { ValidationError } from "../../common/errors";
 import mongoose from "mongoose";
@@ -191,11 +192,96 @@ describe("DirectMessageController", () => {
         nextFunction,
       );
 
+      // Assert - Updated to match what the controller actually sends
+      expect(directMessageService.sendMessage).toHaveBeenCalledWith({
+        senderId: userId,
+        directMessageId: "dm1",
+        receiverId: undefined,
+        content: "Test message",
+        richContent: undefined,
+        contentType: "text", // Controller determines this based on richContent
+        attachmentIds: [],
+        replyToId: undefined,
+      });
+
+      expect(mockResponse.status).toHaveBeenCalledWith(201);
+      expect(mockResponse.json).toHaveBeenCalledWith(mockResult);
+    });
+
+    it("should handle rich content message", async () => {
+      // Setup body with rich content
+      mockRequest.body = {
+        content: "Test message",
+        directMessageId: "dm1",
+        richContent: [{ type: "paragraph", children: [{ text: "Rich text" }] }],
+        attachmentIds: ["attachment1"],
+      };
+
+      // Mock service response
+      const mockResult = {
+        message: { content: "Test message" },
+        directMessage: { _id: "dm1" },
+      };
+      vi.mocked(directMessageService.sendMessage).mockResolvedValueOnce(
+        mockResult as any,
+      );
+
+      // Execute
+      await DirectMessageController.sendMessage(
+        mockRequest as AuthenticatedRequest,
+        mockResponse as Response,
+        nextFunction,
+      );
+
       // Assert
       expect(directMessageService.sendMessage).toHaveBeenCalledWith({
         senderId: userId,
         directMessageId: "dm1",
+        receiverId: undefined,
         content: "Test message",
+        richContent: [{ type: "paragraph", children: [{ text: "Rich text" }] }],
+        contentType: "rich", // Controller determines this based on richContent
+        attachmentIds: ["attachment1"],
+        replyToId: undefined,
+      });
+
+      expect(mockResponse.status).toHaveBeenCalledWith(201);
+      expect(mockResponse.json).toHaveBeenCalledWith(mockResult);
+    });
+
+    it("should handle message with receiverId", async () => {
+      // Setup body with receiverId instead of directMessageId
+      mockRequest.body = {
+        content: "Test message",
+        receiverId: "user123",
+      };
+
+      // Mock service response
+      const mockResult = {
+        message: { content: "Test message" },
+        directMessage: { _id: "dm1" },
+      };
+      vi.mocked(directMessageService.sendMessage).mockResolvedValueOnce(
+        mockResult as any,
+      );
+
+      // Execute
+      await DirectMessageController.sendMessage(
+        mockRequest as AuthenticatedRequest,
+        mockResponse as Response,
+        nextFunction,
+      );
+
+      // Assert
+      expect(directMessageService.sendMessage).toHaveBeenCalledWith({
+        senderId: userId,
+        directMessageId: undefined,
+        receiverId: "user123",
+        content: "Test message",
+        richContent: undefined,
+        contentType: "text",
+        attachmentIds: [],
+        replyToId: undefined,
       });
 
       expect(mockResponse.status).toHaveBeenCalledWith(201);

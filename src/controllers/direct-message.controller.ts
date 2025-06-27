@@ -187,9 +187,14 @@ export class DirectMessageController {
         throw new UnauthorizedError("User not authenticated");
       }
       const userId = req.user._id.toString();
-
       // Determine content type if not explicitly provided
       let contentType = validatedData.contentType;
+      console.log("DEBUG - After validation:", {
+        rawBody: req.body,
+        validatedContentType: validatedData.contentType,
+        validatedRichContent: !!validatedData.richContent,
+        determinedContentType: contentType,
+      });
       if (!contentType) {
         contentType = validatedData.richContent
           ? ContentType.RICH
@@ -197,12 +202,12 @@ export class DirectMessageController {
       }
 
       // Transform rich content to ensure all text fields are strings
-      const processedRichContent = validatedData.richContent?.map(node => ({
+      const processedRichContent = validatedData.richContent?.map((node) => ({
         ...node,
-        children: node.children.map(child => ({
+        children: node.children.map((child) => ({
           ...child,
-          text: child.text || '' // Convert undefined to empty string
-        }))
+          text: child.text || "", // Convert undefined to empty string
+        })),
       }));
 
       const result = await directMessageService.sendMessage({

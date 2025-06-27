@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Updated direct-message.service.ts with Rich Content Support
 import mongoose from "mongoose";
 import { DirectMessageInterface } from "../models/direct-message.model";
@@ -13,6 +14,7 @@ import {
   ValidationError,
 } from "../common/errors";
 import { createLogger } from "../common/logger";
+import { userService } from "./user.service";
 
 const logger = createLogger("direct-message-service");
 
@@ -119,6 +121,8 @@ export class DirectMessageService {
     receiverId: string,
   ): Promise<DirectMessageInterface> {
     // Check if a direct message already exists between these users
+    const userIDs = [senderId, receiverId];
+    await userService.checkIfUsersExists(userIDs);
     const existingDirectMessage =
       await directMessageRepository.findByParticipants(senderId, receiverId);
 
@@ -143,8 +147,8 @@ export class DirectMessageService {
     receiverId?: string;
     directMessageId?: string;
     content: string;
-    richContent?: PlateValue; // Add rich content support
-    contentType?: ContentType; // Add content type support
+    richContent?: PlateValue;
+    contentType?: ContentType;
     attachmentIds?: string[];
     replyToId?: string;
   }) {

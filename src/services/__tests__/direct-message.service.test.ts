@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { directMessageService } from "../direct-message.service";
@@ -62,83 +63,6 @@ describe("DirectMessageService", () => {
     userId1 = new mongoose.Types.ObjectId().toString();
     userId2 = new mongoose.Types.ObjectId().toString();
     directMessageId = new mongoose.Types.ObjectId().toString();
-  });
-
-  describe("getOrCreateDirectMessage", () => {
-    it("should return existing direct message if found", async () => {
-      vi.mocked(userRepository.findByIds).mockResolvedValueOnce([
-        { _id: userId1 } as any,
-        { _id: userId2 } as any,
-      ]);
-      // Mock direct message repository
-      const mockDM = {
-        _id: directMessageId,
-        participantIds: [userId1, userId2],
-      };
-      vi.mocked(
-        directMessageRepository.findByParticipants,
-      ).mockResolvedValueOnce(mockDM as any);
-
-      // Execute
-      const result = await directMessageService.getOrCreateDirectMessage(
-        userId1,
-        userId2,
-      );
-
-      // Assert
-      expect(result).toEqual(mockDM);
-      expect(directMessageRepository.findByParticipants).toHaveBeenCalledWith(
-        userId1,
-        userId2,
-      );
-      expect(directMessageRepository.create).not.toHaveBeenCalled();
-    });
-
-    it("should create new direct message if none exists", async () => {
-      vi.mocked(userRepository.findByIds).mockResolvedValueOnce([
-        { _id: userId1 } as any,
-        { _id: userId2 } as any,
-      ]);
-
-      // Mock direct message repository
-      vi.mocked(
-        directMessageRepository.findByParticipants,
-      ).mockResolvedValueOnce(null);
-
-      const mockCreatedDM = {
-        _id: directMessageId,
-        participantIds: [userId1, userId2].sort(),
-      };
-      vi.mocked(directMessageRepository.create).mockResolvedValueOnce(
-        mockCreatedDM as any,
-      );
-
-      // Execute
-      const result = await directMessageService.getOrCreateDirectMessage(
-        userId1,
-        userId2,
-      );
-
-      // Assert
-      expect(result).toEqual(mockCreatedDM);
-      expect(directMessageRepository.create).toHaveBeenCalledWith({
-        participantIds: [userId1, userId2].sort(),
-        lastActivity: expect.any(Date),
-      });
-    });
-
-    it("should throw NotFoundError if a user doesn't exist", async () => {
-      // Mock user repository to return null for second user
-      vi.mocked(userRepository.findById).mockResolvedValueOnce({
-        _id: userId1,
-      } as any);
-      vi.mocked(userRepository.findById).mockResolvedValueOnce(null);
-
-      // Execute & Assert
-      await expect(
-        directMessageService.getOrCreateDirectMessage(userId1, userId2),
-      ).rejects.toThrow(NotFoundError);
-    });
   });
 
   describe("getDirectMessageById", () => {
@@ -259,20 +183,34 @@ describe("DirectMessageService", () => {
       );
     });
 
-    it("should get or create direct message when receiverId is provided", async () => {
-      // Mock getOrCreateDirectMessage
-      const mockDM = {
+    it("should create new direct message when receiverId is provided", async () => {
+      // Mock that no existing direct message exists
+      vi.mocked(
+        directMessageRepository.findByParticipants,
+      ).mockResolvedValueOnce(null);
+
+      // Mock user validation
+      vi.mocked(userRepository.findByIds).mockResolvedValueOnce([
+        { _id: userId1 } as any,
+        { _id: userId2 } as any,
+      ]);
+
+      // Mock direct message creation
+      const mockCreatedDM = {
         _id: directMessageId,
-        participantIds: [userId1, userId2],
+        participantIds: [
+          new mongoose.Types.ObjectId(userId1),
+          new mongoose.Types.ObjectId(userId2),
+        ],
       };
 
-      const spy = vi
-        .spyOn(directMessageService, "getOrCreateDirectMessage")
-        .mockResolvedValueOnce(mockDM as any);
+      vi.mocked(directMessageRepository.create).mockResolvedValueOnce(
+        mockCreatedDM as any,
+      );
 
-      // Mock direct message for getDirectMessageById
+      // Mock direct message retrieval for sendMessage
       vi.mocked(directMessageRepository.findById).mockResolvedValueOnce(
-        mockDM as any,
+        mockCreatedDM as any,
       );
 
       // Mock message creation
@@ -294,10 +232,20 @@ describe("DirectMessageService", () => {
       });
 
       // Assert
-      expect(spy).toHaveBeenCalledWith(userId1, userId2);
+      expect(directMessageRepository.findByParticipants).toHaveBeenCalledWith(
+        userId1,
+        userId2,
+      );
+      expect(directMessageRepository.create).toHaveBeenCalledWith({
+        participantIds: [
+          new mongoose.Types.ObjectId(userId1),
+          new mongoose.Types.ObjectId(userId2),
+        ],
+      });
+
       expect(result).toEqual({
         message: mockMessage,
-        directMessage: mockDM,
+        directMessage: mockCreatedDM,
       });
 
       expect(unreadMessagesService.incrementUnreadCount).toHaveBeenCalledWith(
@@ -306,6 +254,62 @@ describe("DirectMessageService", () => {
         userId1,
         expect.any(Array),
       );
+    });
+
+    it("should use existing direct message when receiverId is provided and DM exists", async () => {
+      // Mock existing direct message
+      const mockExistingDM = {
+        _id: directMessageId,
+        participantIds: [
+          new mongoose.Types.ObjectId(userId1),
+          new mongoose.Types.ObjectId(userId2),
+        ],
+      };
+
+      vi.mocked(
+        directMessageRepository.findByParticipants,
+      ).mockResolvedValueOnce(mockExistingDM as any);
+
+      // Mock user validation
+      vi.mocked(userRepository.findByIds).mockResolvedValueOnce([
+        { _id: userId1 } as any,
+        { _id: userId2 } as any,
+      ]);
+
+      // Mock direct message retrieval for sendMessage
+      vi.mocked(directMessageRepository.findById).mockResolvedValueOnce(
+        mockExistingDM as any,
+      );
+
+      // Mock message creation
+      const mockMessage = {
+        _id: new mongoose.Types.ObjectId().toString(),
+        messageId: `${Date.now()}_mock-uuid`,
+        content: "Test message",
+      };
+
+      vi.mocked(messageRepository.create).mockResolvedValueOnce(
+        mockMessage as any,
+      );
+
+      // Execute
+      const result = await directMessageService.sendMessage({
+        senderId: userId1,
+        receiverId: userId2,
+        content: "Test message",
+      });
+
+      // Assert
+      expect(directMessageRepository.findByParticipants).toHaveBeenCalledWith(
+        userId1,
+        userId2,
+      );
+      expect(directMessageRepository.create).not.toHaveBeenCalled();
+
+      expect(result).toEqual({
+        message: mockMessage,
+        directMessage: mockExistingDM,
+      });
     });
 
     it("should throw error if neither directMessageId nor receiverId is provided", async () => {
@@ -318,6 +322,137 @@ describe("DirectMessageService", () => {
       ).rejects.toThrow(
         "Either directMessageId or receiverId must be provided",
       );
+    });
+
+    it("should throw NotFoundError if receiver user doesn't exist", async () => {
+      // Mock user validation to return only one user
+      vi.mocked(userRepository.findByIds).mockResolvedValueOnce([
+        { _id: userId1 } as any,
+      ]);
+
+      // Execute & Assert
+      await expect(
+        directMessageService.sendMessage({
+          senderId: userId1,
+          receiverId: userId2,
+          content: "Test message",
+        }),
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe("getUserDirectMessages", () => {
+    it("should return user's direct messages with last message", async () => {
+      const mockDMs = [
+        {
+          _id: directMessageId,
+          participantIds: [userId1, userId2],
+          toObject: () => ({
+            _id: directMessageId,
+            participantIds: [userId1, userId2],
+          }),
+        },
+      ];
+
+      const mockMessages = [
+        {
+          _id: new mongoose.Types.ObjectId().toString(),
+          content: "Last message",
+        },
+      ];
+
+      vi.mocked(directMessageRepository.findAllByUserId).mockResolvedValueOnce(
+        mockDMs as any,
+      );
+
+      vi.mocked(messageRepository.findByDirectMessageId).mockResolvedValueOnce(
+        mockMessages as any,
+      );
+
+      // Mock message service
+      const mockMessageService = {
+        populateMessageAttachments: vi.fn().mockResolvedValue(mockMessages),
+      };
+
+      // Execute
+      const result = await directMessageService.getUserDirectMessages(userId1);
+
+      // Assert
+      expect(result).toEqual([
+        {
+          _id: directMessageId,
+          participantIds: [userId1, userId2],
+          lastMessage: mockMessages[0],
+        },
+      ]);
+    });
+  });
+
+  describe("getMessages", () => {
+    it("should return messages for a direct message", async () => {
+      const mockDM = {
+        _id: directMessageId,
+        participantIds: [
+          new mongoose.Types.ObjectId(userId1),
+          new mongoose.Types.ObjectId(userId2),
+        ],
+      };
+
+      const mockMessages = [
+        {
+          _id: new mongoose.Types.ObjectId().toString(),
+          content: "Message 1",
+        },
+        {
+          _id: new mongoose.Types.ObjectId().toString(),
+          content: "Message 2",
+        },
+      ];
+
+      vi.mocked(directMessageRepository.findById).mockResolvedValueOnce(
+        mockDM as any,
+      );
+
+      vi.mocked(messageRepository.findByDirectMessageId).mockResolvedValueOnce(
+        mockMessages as any,
+      );
+
+      // Execute
+      const result = await directMessageService.getMessages(
+        directMessageId,
+        userId1,
+        { limit: 50 },
+      );
+
+      // Assert
+      expect(directMessageRepository.findById).toHaveBeenCalledWith(
+        directMessageId,
+      );
+      expect(messageRepository.findByDirectMessageId).toHaveBeenCalledWith(
+        directMessageId,
+        { limit: 50 },
+      );
+    });
+
+    it("should throw ForbiddenError if user is not a participant", async () => {
+      const mockDM = {
+        _id: directMessageId,
+        participantIds: [
+          new mongoose.Types.ObjectId(userId1),
+          new mongoose.Types.ObjectId(userId2),
+        ],
+      };
+
+      vi.mocked(directMessageRepository.findById).mockResolvedValueOnce(
+        mockDM as any,
+      );
+
+      const nonParticipantId = new mongoose.Types.ObjectId().toString();
+
+      // Execute & Assert
+      await expect(
+        directMessageService.getMessages(directMessageId, nonParticipantId),
+      ).rejects.toThrow(ForbiddenError);
     });
   });
 });
