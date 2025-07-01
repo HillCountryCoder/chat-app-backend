@@ -11,10 +11,10 @@ vi.mock("jsonwebtoken", async (importOriginal) => {
   const actual = (await importOriginal()) as typeof jwt;
   return {
     ...actual,
-    sign: vi.fn().mockReturnValue("mock-token"),
+    sign: vi.fn().mockReturnValue("mock-access-token"),
     verify: vi.fn(),
     default: {
-      sign: vi.fn().mockReturnValue("mock-token"),
+      sign: vi.fn().mockReturnValue("mock-access-token"),
       verify: vi.fn(),
     },
   };
@@ -36,38 +36,47 @@ vi.mock("../../common/environment", () => ({
   },
 }));
 
+// Mock RefreshToken model
+vi.mock("../../models/refresh-token.model", () => ({
+  RefreshToken: {
+    create: vi.fn().mockResolvedValue({
+      token: "mock-refresh-token-value",
+      userId: "507f1f77bcf86cd799439011",
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    }),
+    findOne: vi.fn(),
+    deleteOne: vi.fn(),
+    deleteMany: vi.fn(),
+    find: vi.fn(),
+  },
+}));
+
 describe("AuthService", () => {
   let authService: AuthService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Get the singleton instance
     authService = AuthService.getInstance();
   });
 
-  describe("generateToken", () => {
-    it("should generate a JWT token with correct payload", () => {
+  describe("generateTokenPair", () => {
+    it("should generate access and refresh tokens", async () => {
       // Arrange
       const mockUser = {
-		  _id: "123456789012",
-		  email: "test@example.com",
-		  username: "testuser",
-	  } as unknown as User;
+        _id: "507f1f77bcf86cd799439011", // Valid ObjectId format
+        email: "test@example.com",
+        username: "testuser",
+      } as unknown as User;
 
       // Act
-      const token = authService.generateToken(mockUser);
+      const result = await authService.generateTokenPair(mockUser);
 
       // Assert
-      expect(token).toBe("mock-token");
-      expect(jwt.sign).toHaveBeenCalledWith(
-        {
-          _id: mockUser._id,
-          email: mockUser.email,
-          username: mockUser.username,
-        },
-        "test-secret",
-        { expiresIn: "1d" },
-      );
+      expect(result).toEqual({
+        accessToken: "mock-access-token",
+        refreshToken: expect.any(String), // This will be the crypto-generated token
+        expiresIn: "7d",
+      });
     });
   });
 
@@ -75,7 +84,7 @@ describe("AuthService", () => {
     it("should return user data when token is valid", () => {
       // Arrange
       const mockDecodedToken = {
-        _id: "123456789012",
+        _id: "507f1f77bcf86cd799439011",
         email: "test@example.com",
         username: "testuser",
       };

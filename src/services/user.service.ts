@@ -1,4 +1,3 @@
-// src/services/user.service.ts
 import { createLogger } from "../common/logger";
 import winston from "winston";
 import { UserInterface as User, UserInterface, UserStatus } from "../models";
@@ -13,8 +12,11 @@ import { LoginInput, RegisterInput } from "./validation/auth.validation";
 
 export interface AuthResponse {
   user: Partial<User>;
-  token: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: string;
 }
+
 export interface UserListResponse {
   users: Partial<User>[];
   total: number;
@@ -22,6 +24,7 @@ export interface UserListResponse {
   limit: number;
   totalPages: number;
 }
+
 const logger = createLogger("user-service");
 
 export class UserService {
@@ -72,12 +75,18 @@ export class UserService {
     }
   }
 
-  // User registration
   public async registerUser(userData: RegisterInput): Promise<AuthResponse> {
     const newUser = await this.createUser(userData);
 
-    // Generate token and return user data
-    const token = authService.generateToken(newUser);
+    // Generate token pair and return user data
+    const tokens = await authService.generateTokenPair(
+      newUser,
+      userData.rememberMe || false,
+      // Add default device info since controller doesn't pass it
+      "Registration Device",
+      "Unknown IP",
+      "Unknown User Agent",
+    );
 
     return {
       user: {
@@ -86,13 +95,13 @@ export class UserService {
         username: newUser.username,
         displayName: newUser.displayName,
       },
-      token,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
     };
   }
 
-  // User login
   public async loginUser(credentials: LoginInput): Promise<AuthResponse> {
-    // Find user - we don't need validation here because Zod already did it
     let user;
     if (credentials.email) {
       user = await userRepository.findByEmail(credentials.email);
@@ -114,8 +123,15 @@ export class UserService {
     user.lastSeen = new Date();
     await user.save();
 
-    // Generate token and return response
-    const token = authService.generateToken(user);
+    // Generate token pair and return response
+    const tokens = await authService.generateTokenPair(
+      user,
+      credentials.rememberMe || false,
+      // Add default device info since controller doesn't pass it
+      "Login Device",
+      "Unknown IP",
+      "Unknown User Agent",
+    );
 
     return {
       user: {
@@ -126,7 +142,9 @@ export class UserService {
         avatarUrl: user.avatarUrl,
         status: user.status,
       },
-      token,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
     };
   }
 
@@ -200,6 +218,94 @@ export class UserService {
     }
 
     return users;
+  }
+
+  async getUserByEmail(email: string): Promise<UserInterface | null> {
+    const user = await userRepository.findByEmail(email);
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<UserInterface | null> {
+    const user = await userRepository.findByUsername(username);
+    return user;
+  }
+  // ENHANCED: Add overloaded methods that accept device info
+
+  public async registerUserWithDeviceInfo(
+    userData: RegisterInput,
+    deviceInfo?: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<AuthResponse> {
+    const newUser = await this.createUser(userData);
+
+    const tokens = await authService.generateTokenPair(
+      newUser,
+      userData.rememberMe || false,
+      deviceInfo || "Registration Device",
+      ipAddress || "Unknown IP",
+      userAgent || "Unknown User Agent",
+    );
+
+    return {
+      user: {
+        _id: newUser._id,
+        email: newUser.email,
+        username: newUser.username,
+        displayName: newUser.displayName,
+      },
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
+    };
+  }
+
+  public async loginUserWithDeviceInfo(
+    credentials: LoginInput,
+    deviceInfo?: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<AuthResponse> {
+    let user;
+    if (credentials.email) {
+      user = await userRepository.findByEmail(credentials.email);
+    } else if (credentials.username) {
+      user = await userRepository.findByUsername(credentials.username);
+    }
+
+    if (!user) {
+      throw new NotFoundError("user");
+    }
+
+    const isPasswordValid = await user.comparePassword(credentials.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedError("Invalid credentials");
+    }
+
+    user.lastSeen = new Date();
+    await user.save();
+
+    const tokens = await authService.generateTokenPair(
+      user,
+      credentials.rememberMe || false,
+      deviceInfo || "Login Device",
+      ipAddress || "Unknown IP",
+      userAgent || "Unknown User Agent",
+    );
+
+    return {
+      user: {
+        _id: user._id,
+        email: user.email,
+        username: user.username,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        status: user.status,
+      },
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
+    };
   }
 }
 

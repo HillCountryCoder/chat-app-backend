@@ -3,11 +3,13 @@ import { AuthController } from "../controllers";
 import {
   loginSchemaForMiddleware,
   registerSchema,
+  refreshTokenSchema,
 } from "../services/validation/auth.validation";
 import { authMiddleware, validateRequest } from "../common/middlewares";
 
 const router = Router();
 
+// Public routes
 router.post(
   "/register",
   validateRequest(registerSchema),
@@ -20,7 +22,16 @@ router.post(
   AuthController.login,
 );
 
-// protected routes
+router.post(
+  "/refresh",
+  validateRequest(refreshTokenSchema),
+  AuthController.refreshToken,
+);
+
+// Protected routes
 router.get("/me", authMiddleware, AuthController.getCurrentUser);
+router.post("/logout", authMiddleware, AuthController.logout);
+router.post("/logout-all", authMiddleware, AuthController.logoutAll);
+router.get("/sessions", authMiddleware, AuthController.getActiveSessions);
 
 export default router;

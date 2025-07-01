@@ -20,9 +20,9 @@ describe("Message Reaction Routes Integration Tests", () => {
     const loginResponse = await request(app).post("/api/auth/login").send({
       identifier: loginCredentials.valid.email,
       password: loginCredentials.valid.password,
+      rememberMe: false,
     });
-
-    authToken = loginResponse.body.token;
+    authToken = loginResponse.body.accessToken;
     userId = loginResponse.body.user._id;
 
     // First create a direct message (conversation)

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Server } from "socket.io";
 import { io as ioc, Socket as ClientSocket } from "socket.io-client";
@@ -54,9 +55,10 @@ describe("Direct Message Socket Integration Tests", () => {
     const loginResponse1 = await request(app).post("/api/auth/login").send({
       identifier: loginCredentials.valid.email,
       password: loginCredentials.valid.password,
+      rememberMe: false,
     });
 
-    token1 = loginResponse1.body.token;
+    token1 = loginResponse1.body.accessToken;
     userId1 = loginResponse1.body.user._id;
 
     // Create and login second user
@@ -69,7 +71,7 @@ describe("Direct Message Socket Integration Tests", () => {
     });
 
     userId2 = user2._id.toString();
-    token2 = authService.generateToken(user2);
+    token2 = (await authService.generateTokenPair(user2)).accessToken;
 
     // Wait a bit for server to be ready
     await new Promise((resolve) => setTimeout(resolve, 100));

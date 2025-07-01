@@ -23,6 +23,7 @@ export const registerSchema = z.object({
     .regex(/[\W_]/, "Password must contain at least one special character"),
   firstName: z.string().min(3, "First name is required"),
   lastName: z.string().optional(),
+  rememberMe: z.boolean().optional().default(false),
 });
 
 export const loginSchema = z
@@ -31,6 +32,7 @@ export const loginSchema = z
     email: z.string().email("Invalid email address").optional(),
     username: z.string().optional(),
     password: z.string().min(8, "Password is required"),
+    rememberMe: z.boolean().optional().default(false),
   })
   .refine(
     (data) => {
@@ -46,10 +48,17 @@ export const loginSchemaForMiddleware = z.object({
   // For login, allow a general identifier that could be either email or username
   identifier: z.string().min(1, "Email or username is required"),
   password: z.string().min(8, "Password is required"),
+  rememberMe: z.boolean().optional().default(false),
 });
+
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(1, "Refresh token is required"),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type AuthInput = z.infer<typeof loginSchemaForMiddleware>;
+export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export class AuthValidationService {
   private static instance: AuthValidationService;
 

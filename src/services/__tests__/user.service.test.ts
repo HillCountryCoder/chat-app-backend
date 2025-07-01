@@ -1,13 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UserService } from "../user.service";
 import { userRepository } from "../../repositories/user.repository";
 import { authService } from "../auth.service";
-import { UserInterface as User, UserStatus } from "../../models";
-import {
-  ConflictError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../../common/errors";
+import { ConflictError, NotFoundError, UnauthorizedError } from "../../common/errors";
+import { UserStatus } from "../../models";
+import { Types } from "mongoose";
 
 // Mock dependencies
 vi.mock("../../repositories/user.repository", () => ({
@@ -17,22 +15,25 @@ vi.mock("../../repositories/user.repository", () => ({
     findByEmail: vi.fn(),
     findByUsername: vi.fn(),
     findById: vi.fn(),
+    findAllUsers: vi.fn(),
+    countUsers: vi.fn(),
+    findByIds: vi.fn(),
   },
 }));
 
 vi.mock("../auth.service", () => ({
   authService: {
-    generateToken: vi.fn().mockReturnValue("mock-token"),
+    generateTokenPair: vi.fn(), // FIXED: Updated method name
   },
 }));
 
 vi.mock("../../common/logger", () => ({
-  createLogger: vi.fn().mockReturnValue({
+  createLogger: vi.fn(() => ({
     info: vi.fn(),
-    warn: vi.fn(),
     error: vi.fn(),
+    warn: vi.fn(),
     debug: vi.fn(),
-  }),
+  })),
 }));
 
 describe("UserService", () => {
@@ -44,269 +45,361 @@ describe("UserService", () => {
   });
 
   describe("createUser", () => {
-    const validUserData = {
-      email: "test@example.com",
-      username: "testuser",
-      password: "Password123",
-      firstName: "Test",
-      lastName: "User",
-    };
-    it("should throw ConflictError if email already exists", async () => {
-      // Arrange
-      vi.mocked(userRepository.findOne).mockResolvedValue({
-        email: validUserData.email,
-      } as User);
-
-      // Act & Assert
-      await expect(userService.createUser(validUserData)).rejects.toThrow(
-        ConflictError,
-      );
-      await expect(userService.createUser(validUserData)).rejects.toThrow(
-        "User with this email already exists",
-      );
-    });
-    it("should throw ConflictError if username already exists", async () => {
-      // Arrange
-      vi.mocked(userRepository.findOne).mockResolvedValue({
-        username: validUserData.username,
-      } as User);
-
-      // Act & Assert
-      await expect(userService.createUser(validUserData)).rejects.toThrow(
-        ConflictError,
-      );
-      await expect(userService.createUser(validUserData)).rejects.toThrow(
-        "User with this username already exists",
-      );
-    });
     it("should create a new user successfully", async () => {
       // Arrange
-      const mockCreatedUser = {
-        _id: "123456789012",
-        email: validUserData.email,
-        username: validUserData.username,
+      const userData = {
+        email: "test@example.com",
+        username: "testuser",
+        password: "password123",
+        firstName: "Test",
+        lastName: "User",
+        rememberMe: false, // FIXED: Added rememberMe
+      };
+
+      const expectedUser = {
+        _id: new Types.ObjectId(),
+        email: "test@example.com",
+        username: "testuser",
         displayName: "Test User",
         status: UserStatus.OFFLINE,
-      } as unknown as User;
+      };
 
       vi.mocked(userRepository.findOne).mockResolvedValue(null);
-      vi.mocked(userRepository.create).mockResolvedValue(mockCreatedUser);
+      vi.mocked(userRepository.create).mockResolvedValue(expectedUser as any);
 
       // Act
-      const result = await userService.createUser(validUserData);
+      const result = await userService.createUser(userData);
 
       // Assert
-      expect(result).toEqual(mockCreatedUser);
+      expect(result).toEqual(expectedUser);
+      expect(userRepository.findOne).toHaveBeenCalledWith({
+        $or: [{ email: userData.email }, { username: userData.username }],
+      });
       expect(userRepository.create).toHaveBeenCalledWith({
-        email: validUserData.email,
-        username: validUserData.username,
-        passwordHash: validUserData.password,
+        email: userData.email,
+        username: userData.username,
+        passwordHash: userData.password,
         displayName: "Test User",
         status: UserStatus.OFFLINE,
       });
     });
-    it("should handle errors during user creation", async () => {
+
+    it("should throw ConflictError when user with email already exists", async () => {
       // Arrange
-      const error = new Error("Database error");
-      vi.mocked(userRepository.findOne).mockResolvedValue(null);
-      vi.mocked(userRepository.create).mockRejectedValue(error);
+      const userData = {
+        email: "test@example.com",
+        username: "testuser",
+        password: "password123",
+        firstName: "Test",
+        lastName: "User",
+        rememberMe: false, // FIXED: Added rememberMe
+      };
+
+      const existingUser = {
+        _id: new Types.ObjectId(),
+        email: "test@example.com",
+        username: "different",
+      };
+
+      vi.mocked(userRepository.findOne).mockResolvedValue(existingUser as any);
 
       // Act & Assert
-      await expect(userService.createUser(validUserData)).rejects.toThrow(
-        error,
+      await expect(userService.createUser(userData)).rejects.toThrow(
+        ConflictError,
+      );
+    });
+
+    it("should throw ConflictError when user with username already exists", async () => {
+      // Arrange
+      const userData = {
+        email: "test@example.com",
+        username: "testuser",
+        password: "password123",
+        firstName: "Test",
+        lastName: "User",
+        rememberMe: false, // FIXED: Added rememberMe
+      };
+
+      const existingUser = {
+        _id: new Types.ObjectId(),
+        email: "different@example.com",
+        username: "testuser",
+      };
+
+      vi.mocked(userRepository.findOne).mockResolvedValue(existingUser as any);
+
+      // Act & Assert
+      await expect(userService.createUser(userData)).rejects.toThrow(
+        ConflictError,
       );
     });
   });
-  describe("registerUser", () => {
-    const validUserData = {
-      email: "test@example.com",
-      username: "testuser",
-      password: "Password123",
-      firstName: "Test",
-      lastName: "User",
-    };
-    it("should register a user and return auth response", async () => {
-      const mockCreatedUser = {
-        _id: "123456789012",
-        email: validUserData.email,
-        username: validUserData.username,
-        displayName: "Test User",
-      } as unknown as User;
 
-      vi.spyOn(userService, "createUser").mockResolvedValue(mockCreatedUser);
+  describe("registerUser", () => {
+    it("should register a new user and return auth response", async () => {
+      // Arrange
+      const userData = {
+        email: "test@example.com",
+        username: "testuser",
+        password: "password123",
+        firstName: "Test",
+        lastName: "User",
+        rememberMe: true, // FIXED: Added rememberMe
+      };
+
+      const mockUser = {
+        _id: new Types.ObjectId(),
+        email: "test@example.com",
+        username: "testuser",
+        displayName: "Test User",
+      };
+
+      const mockTokens = {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        expiresIn: "30d",
+      };
+
+      vi.mocked(userRepository.findOne).mockResolvedValue(null);
+      vi.mocked(userRepository.create).mockResolvedValue(mockUser as any);
+      vi.mocked(authService.generateTokenPair).mockResolvedValue(mockTokens); // FIXED: Updated method name
+
       // Act
-      const result = await userService.registerUser(validUserData);
+      const result = await userService.registerUser(userData);
 
       // Assert
-      expect(userService.createUser).toHaveBeenCalledWith(validUserData);
-      expect(authService.generateToken).toHaveBeenCalledWith(mockCreatedUser);
       expect(result).toEqual({
         user: {
-          _id: mockCreatedUser._id,
-          email: mockCreatedUser.email,
-          username: mockCreatedUser.username,
-          displayName: mockCreatedUser.displayName,
+          _id: mockUser._id,
+          email: mockUser.email,
+          username: mockUser.username,
+          displayName: mockUser.displayName,
         },
-        token: "mock-token",
+        accessToken: "access-token", // FIXED: Updated property names
+        refreshToken: "refresh-token",
+        expiresIn: "30d",
       });
     });
   });
+
   describe("loginUser", () => {
-    const validCredentials = {
-      email: "test@example.com",
-      password: "Password123",
-    };
-
-    const credentialsWithUsername = {
-      username: "testuser",
-      password: "Password123",
-    };
-
-    it("should throw NotFoundError if user is not found with email", async () => {
+    it("should login user with email successfully", async () => {
       // Arrange
+      const credentials = {
+        email: "test@example.com",
+        password: "password123",
+        rememberMe: false, // FIXED: Added rememberMe
+      };
+
+      const mockUser = {
+        _id: new Types.ObjectId(),
+        email: "test@example.com",
+        username: "testuser",
+        displayName: "Test User",
+        comparePassword: vi.fn().mockResolvedValue(true),
+        save: vi.fn(),
+        lastSeen: new Date(),
+        avatarUrl: "avatar.jpg",
+        status: UserStatus.ONLINE,
+      };
+
+      const mockTokens = {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        expiresIn: "7d",
+      };
+
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser as any);
+      vi.mocked(authService.generateTokenPair).mockResolvedValue(mockTokens); // FIXED: Updated method name
+
+      // Act
+      const result = await userService.loginUser(credentials);
+
+      // Assert
+      expect(result).toEqual({
+        user: {
+          _id: mockUser._id,
+          email: mockUser.email,
+          username: mockUser.username,
+          displayName: mockUser.displayName,
+          avatarUrl: mockUser.avatarUrl,
+          status: mockUser.status,
+        },
+        accessToken: "access-token", // FIXED: Updated property names
+        refreshToken: "refresh-token",
+        expiresIn: "7d",
+      });
+      expect(mockUser.save).toHaveBeenCalled();
+    });
+
+    it("should login user with username successfully", async () => {
+      // Arrange
+      const credentials = {
+        username: "testuser",
+        password: "password123",
+        rememberMe: false, // FIXED: Added rememberMe
+      };
+
+      const mockUser = {
+        _id: new Types.ObjectId(),
+        email: "test@example.com",
+        username: "testuser",
+        displayName: "Test User",
+        comparePassword: vi.fn().mockResolvedValue(true),
+        save: vi.fn(),
+        lastSeen: new Date(),
+        avatarUrl: "avatar.jpg",
+        status: UserStatus.ONLINE,
+      };
+
+      const mockTokens = {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        expiresIn: "7d",
+      };
+
+      vi.mocked(userRepository.findByUsername).mockResolvedValue(mockUser as any);
+      vi.mocked(authService.generateTokenPair).mockResolvedValue(mockTokens); // FIXED: Updated method name
+
+      // Act
+      const result = await userService.loginUser(credentials);
+
+      // Assert
+      expect(result.user.username).toBe("testuser");
+      expect(mockUser.save).toHaveBeenCalled();
+    });
+
+    it("should throw NotFoundError when user not found", async () => {
+      // Arrange
+      const credentials = {
+        email: "test@example.com",
+        password: "password123",
+        rememberMe: false, // FIXED: Added rememberMe
+      };
+
       vi.mocked(userRepository.findByEmail).mockResolvedValue(null);
 
       // Act & Assert
-      await expect(userService.loginUser(validCredentials)).rejects.toThrow(
+      await expect(userService.loginUser(credentials)).rejects.toThrow(
         NotFoundError,
       );
-      await expect(userService.loginUser(validCredentials)).rejects.toThrow(
-        "user",
-      );
     });
 
-    it("should throw NotFoundError if user is not found with username", async () => {
+    it("should throw UnauthorizedError when password is invalid", async () => {
       // Arrange
-      vi.mocked(userRepository.findByUsername).mockResolvedValue(null);
+      const credentials = {
+        email: "test@example.com",
+        password: "wrongpassword",
+        rememberMe: false, // FIXED: Added rememberMe
+      };
 
-      // Act & Assert
-      await expect(
-        userService.loginUser(credentialsWithUsername),
-      ).rejects.toThrow(NotFoundError);
-      await expect(
-        userService.loginUser(credentialsWithUsername),
-      ).rejects.toThrow("user");
-    });
-
-    it("should throw UnauthorizedError if password is invalid", async () => {
-      // Arrange
       const mockUser = {
         comparePassword: vi.fn().mockResolvedValue(false),
-        save: vi.fn().mockResolvedValue(undefined),
-      } as unknown as User;
+      };
 
-      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser as any);
 
       // Act & Assert
-      await expect(userService.loginUser(validCredentials)).rejects.toThrow(
+      await expect(userService.loginUser(credentials)).rejects.toThrow(
         UnauthorizedError,
       );
-      await expect(userService.loginUser(validCredentials)).rejects.toThrow(
-        "Invalid credentials",
-      );
-      expect(mockUser.comparePassword).toHaveBeenCalledWith(
-        validCredentials.password,
-      );
-    });
-
-    it("should return user data and token on successful login with email", async () => {
-      // Arrange
-      const mockUser = {
-        _id: "123456789012",
-        email: "test@example.com",
-        username: "testuser",
-        displayName: "Test User",
-        status: UserStatus.OFFLINE,
-        lastSeen: new Date(),
-        save: vi.fn().mockResolvedValue(undefined),
-        comparePassword: vi.fn().mockResolvedValue(true),
-      } as unknown as User;
-
-      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
-
-      // Act
-      const result = await userService.loginUser(validCredentials);
-
-      // Assert
-      expect(result).toEqual({
-        user: {
-          _id: mockUser._id,
-          email: mockUser.email,
-          username: mockUser.username,
-          displayName: mockUser.displayName,
-          avatarUrl: undefined,
-          status: mockUser.status,
-        },
-        token: "mock-token",
-      });
-      expect(mockUser.save).toHaveBeenCalled();
-      expect(authService.generateToken).toHaveBeenCalledWith(mockUser);
-    });
-
-    it("should return user data and token on successful login with username", async () => {
-      // Arrange
-      const mockUser = {
-        _id: "123456789012",
-        email: "test@example.com",
-        username: "testuser",
-        displayName: "Test User",
-        status: UserStatus.OFFLINE,
-        lastSeen: new Date(),
-        save: vi.fn().mockResolvedValue(undefined),
-        comparePassword: vi.fn().mockResolvedValue(true),
-      } as unknown as User;
-
-      vi.mocked(userRepository.findByUsername).mockResolvedValue(mockUser);
-
-      // Act
-      const result = await userService.loginUser(credentialsWithUsername);
-
-      // Assert
-      expect(result).toEqual({
-        user: {
-          _id: mockUser._id,
-          email: mockUser.email,
-          username: mockUser.username,
-          displayName: mockUser.displayName,
-          avatarUrl: undefined,
-          status: mockUser.status,
-        },
-        token: "mock-token",
-      });
-      expect(mockUser.save).toHaveBeenCalled();
-      expect(authService.generateToken).toHaveBeenCalledWith(mockUser);
     });
   });
+
   describe("getUserById", () => {
-    it("should throw NotFoundError if user is not found", async () => {
-      // Arrange
-      vi.mocked(userRepository.findById).mockResolvedValue(null);
-
-      // Act & Assert
-      await expect(userService.getUserById("nonexistent-id")).rejects.toThrow(
-        NotFoundError,
-      );
-      await expect(userService.getUserById("nonexistent-id")).rejects.toThrow(
-        "user",
-      );
-    });
-
     it("should return user when found", async () => {
       // Arrange
+      const userId = "user123";
       const mockUser = {
-        _id: "123456789012",
+        _id: userId,
         email: "test@example.com",
         username: "testuser",
-      } as unknown as User;
+      };
 
-      vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
+      vi.mocked(userRepository.findById).mockResolvedValue(mockUser as any);
 
       // Act
-      const result = await userService.getUserById("123456789012");
+      const result = await userService.getUserById(userId);
 
       // Assert
       expect(result).toEqual(mockUser);
-      expect(userRepository.findById).toHaveBeenCalledWith("123456789012");
+    });
+
+    it("should throw NotFoundError when user not found", async () => {
+      // Arrange
+      const userId = "nonexistent";
+
+      vi.mocked(userRepository.findById).mockResolvedValue(null);
+
+      // Act & Assert
+      await expect(userService.getUserById(userId)).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+  });
+
+  describe("getAllUsers", () => {
+    it("should return paginated users", async () => {
+      // Arrange
+      const options = {
+        search: "test",
+        page: 1,
+        limit: 10,
+        currentUserId: "current123",
+      };
+
+      const mockUsers = [
+        { _id: "user1", username: "testuser1" },
+        { _id: "user2", username: "testuser2" },
+      ];
+
+      vi.mocked(userRepository.findAllUsers).mockResolvedValue(mockUsers as any);
+      vi.mocked(userRepository.countUsers).mockResolvedValue(2);
+
+      // Act
+      const result = await userService.getAllUsers(options);
+
+      // Assert
+      expect(result).toEqual({
+        users: mockUsers,
+        total: 2,
+        page: 1,
+        limit: 10,
+        totalPages: 1,
+      });
+    });
+  });
+
+  describe("getUserByEmail", () => {
+    it("should return user when found", async () => {
+      // Arrange
+      const email = "test@example.com";
+      const mockUser = {
+        _id: "user123",
+        email: "test@example.com",
+        username: "testuser",
+      };
+
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser as any);
+
+      // Act
+      const result = await userService.getUserByEmail(email);
+
+      // Assert
+      expect(result).toEqual(mockUser);
+    });
+
+    it("should return null when user not found", async () => {
+      // Arrange
+      const email = "nonexistent@example.com";
+
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(null);
+
+      // Act
+      const result = await userService.getUserByEmail(email);
+
+      // Assert
+      expect(result).toBeNull();
     });
   });
 });

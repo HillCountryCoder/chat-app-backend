@@ -19,13 +19,24 @@ describe("User Login Integration", () => {
       .send({
         identifier: loginCredentials.valid.email,
         password: loginCredentials.valid.password,
+        rememberMe: false,
       })
       .expect(200);
 
     // Verify response structure
+    expect(response.body).toHaveProperty("success", true);
+    expect(response.body).toHaveProperty("message", "Login successful");
     expect(response.body).toHaveProperty("user");
-    expect(response.body).toHaveProperty("token");
+    expect(response.body).toHaveProperty("accessToken"); // CHANGED: from "token" to "accessToken"
+    expect(response.body).toHaveProperty("refreshToken"); // ADD: Check for refresh token
+    expect(response.body).toHaveProperty("expiresIn");
+    // Verify the lastSeen timestamp was updated
     expect(response.body.user.email).toBe(loginCredentials.valid.email);
+
+    // Verify token structure
+    expect(typeof response.body.accessToken).toBe("string");
+    expect(typeof response.body.refreshToken).toBe("string");
+    expect(response.body.expiresIn).toBe("7d"); // Should be 7 days for rememberMe: false
 
     // Verify the lastSeen timestamp was updated
     const user = await User.findOne({ email: loginCredentials.valid.email });
@@ -40,15 +51,27 @@ describe("User Login Integration", () => {
       .send({
         identifier: loginCredentials.validUsername.username,
         password: loginCredentials.validUsername.password,
+        rememberMe: false,
       })
       .expect(200);
 
     // Verify response structure
+    expect(response.body).toHaveProperty("success", true);
+    expect(response.body).toHaveProperty("message", "Login successful");
     expect(response.body).toHaveProperty("user");
-    expect(response.body).toHaveProperty("token");
+    expect(response.body).toHaveProperty("accessToken"); // CHANGED: from "token" to "accessToken"
+    expect(response.body).toHaveProperty("refreshToken"); // ADD: Check for refresh token
+    expect(response.body).toHaveProperty("expiresIn"); // ADD: Check for expiration
+
+    // Verify user data
     expect(response.body.user.username).toBe(
       loginCredentials.validUsername.username,
     );
+
+    // Verify token structure
+    expect(typeof response.body.accessToken).toBe("string");
+    expect(typeof response.body.refreshToken).toBe("string");
+    expect(response.body.expiresIn).toBe("7d");
   });
 
   it("should return 404 with non-existent email", async () => {

@@ -32,9 +32,10 @@ describe("Direct Messaging Integration Tests", () => {
     const loginResponse1 = await request(app).post("/api/auth/login").send({
       identifier: loginCredentials.valid.email,
       password: loginCredentials.valid.password,
+      rememberMe: false,
     });
 
-    authToken1 = loginResponse1.body.token;
+    authToken1 = loginResponse1.body.accessToken;
     userId1 = loginResponse1.body.user._id;
 
     // Create and login second user
@@ -184,9 +185,10 @@ describe("Direct Messaging Integration Tests", () => {
       const loginResponse3 = await request(app).post("/api/auth/login").send({
         identifier: "user3@example.com",
         password: "Password123!",
+        rememberMe: false,
       });
 
-      const authToken3 = loginResponse3.body.token;
+      const authToken3 = loginResponse3.body.accessToken;
 
       // First create a direct message between user1 and user2
       const sendResponse = await request(app)

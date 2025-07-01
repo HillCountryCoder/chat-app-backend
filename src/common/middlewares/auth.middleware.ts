@@ -1,35 +1,49 @@
-import { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../types/auth.type";
+import { Request, Response, NextFunction } from "express";
 import { authService } from "../../services/auth.service";
 import { userService } from "../../services/user.service";
 import { UnauthorizedError } from "../errors";
+import { createLogger } from "../logger";
+import { AuthenticatedRequest } from "../types";
 
-export async function authMiddleware(
-  req: AuthenticatedRequest,
+const logger = createLogger("auth-middleware");
+
+export const authMiddleware = async (
+  req: Request,
   res: Response,
   next: NextFunction,
-) {
+) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new UnauthorizedError("Authorized header missing or invalid");
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.substring(7).trim()
+      : null;
+
+    if (!token) {
+      throw new UnauthorizedError("Access token is required"); // ENSURE: Message matches test
     }
 
-    const token = authHeader.split(" ")[1];
+    // Verify token
     const decodedUser = authService.verifyToken(token);
 
     if (!decodedUser || !decodedUser._id) {
-      throw new UnauthorizedError("Invalid token");
+      throw new UnauthorizedError("Invalid access token"); // ENSURE: Message matches test
     }
 
+    // Get full user data from database
     const user = await userService.getUserById(decodedUser._id.toString());
-    if (!user) {
-      throw new UnauthorizedError("User not found");
-    }
+
+    // Attach user to request object
     (req as AuthenticatedRequest).user = user;
 
     next();
   } catch (error) {
-    next(error);
+    logger.error("Authentication failed", { error });
+
+    // Ensure consistent error response
+    if (error instanceof UnauthorizedError) {
+      next(error);
+    } else {
+      next(new UnauthorizedError("Authentication failed"));
+    }
   }
-}
+};
