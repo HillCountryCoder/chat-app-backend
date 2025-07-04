@@ -65,6 +65,7 @@ export class AuthService {
       ipAddress,
       userAgent,
       expiresAt,
+      rememberMe, // Add this field to track original preference
     });
 
     this.logger.info("Refresh token generated", {
@@ -85,7 +86,7 @@ export class AuthService {
   ): Promise<{
     accessToken: string;
     refreshToken: string;
-    expiresIn: string; // For backward compatibility
+    expiresIn: string;
     accessTokenExpiresIn: string;
     refreshTokenExpiresIn: string;
   }> {
@@ -101,7 +102,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      expiresIn: rememberMe ? "30d" : "7d", // For backward compatibility
+      expiresIn: rememberMe ? "30d" : "7d", // Keep for backward compatibility
       accessTokenExpiresIn: "15m",
       refreshTokenExpiresIn: rememberMe ? "30d" : "7d",
     };
@@ -138,9 +139,8 @@ export class AuthService {
     }
 
     // Get original rememberMe preference from stored token
-    const expiresIn = storedToken.expiresAt;
-    const originalRememberMe =
-      expiresIn.getTime() - Date.now() > 7 * 24 * 60 * 60 * 1000; // More than 7 days means rememberMe
+    const originalRememberMe = storedToken.rememberMe || false;
+
     // Update last used timestamp
     storedToken.lastUsed = new Date();
     await storedToken.save();

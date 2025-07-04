@@ -6,6 +6,7 @@ export interface RefreshTokenInterface extends Document {
   deviceInfo?: string;
   ipAddress?: string;
   userAgent?: string;
+  rememberMe: boolean;
   expiresAt: Date;
   createdAt: Date;
   lastUsed?: Date;
@@ -41,6 +42,10 @@ const refreshTokenSchema = new Schema<RefreshTokenInterface>(
       type: Date,
       required: true,
       index: { expireAfterSeconds: 0 }, // MongoDB TTL index
+    },
+    rememberMe: {
+      type: Boolean,
+      default: false,
     },
     lastUsed: {
       type: Date,
