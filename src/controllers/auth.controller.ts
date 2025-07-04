@@ -101,9 +101,15 @@ export class AuthController {
           _id: tokens.user._id,
           username: tokens.user.username,
           email: tokens.user.email,
+          displayName: tokens.user.displayName,
+          avatarUrl: tokens.user.avatarUrl,
+          status: tokens.user.status,
         },
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
+		expiresIn: tokens.expiresIn, // For backward compatibility
+		accessTokenExpiresIn: tokens.accessTokenExpiresIn,
+		refreshTokenExpiresIn: tokens.refreshTokenExpiresIn,
       });
     } catch (error) {
       logger.error("Token refresh failed", { error });

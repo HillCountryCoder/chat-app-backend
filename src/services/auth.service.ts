@@ -57,7 +57,7 @@ export class AuthService {
       : 7 * 24 * 60 * 60 * 1000; // 30 days or 7 days
     const expiresAt = new Date(Date.now() + expiresIn);
 
-    // Store in database
+    // Store in database with rememberMe flag
     await RefreshToken.create({
       token: tokenValue,
       userId: user._id,
@@ -82,7 +82,13 @@ export class AuthService {
     deviceInfo?: string,
     ipAddress?: string,
     userAgent?: string,
-  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: string }> {
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: string; // For backward compatibility
+    accessTokenExpiresIn: string;
+    refreshTokenExpiresIn: string;
+  }> {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = await this.generateRefreshToken(
       user,
@@ -95,7 +101,9 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      expiresIn: rememberMe ? "30d" : "7d",
+      expiresIn: rememberMe ? "30d" : "7d", // For backward compatibility
+      accessTokenExpiresIn: "15m",
+      refreshTokenExpiresIn: rememberMe ? "30d" : "7d",
     };
   }
 
@@ -103,6 +111,9 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
     user: User;
+    expiresIn: string;
+    accessTokenExpiresIn: string;
+    refreshTokenExpiresIn: string;
   }> {
     // Find and validate refresh token
     const storedToken = await RefreshToken.findOne({
@@ -126,6 +137,10 @@ export class AuthService {
       throw new UnauthorizedError("User not found");
     }
 
+    // Get original rememberMe preference from stored token
+    const expiresIn = storedToken.expiresAt;
+    const originalRememberMe =
+      expiresIn.getTime() - Date.now() > 7 * 24 * 60 * 60 * 1000; // More than 7 days means rememberMe
     // Update last used timestamp
     storedToken.lastUsed = new Date();
     await storedToken.save();
@@ -133,10 +148,10 @@ export class AuthService {
     // Generate new access token
     const newAccessToken = this.generateAccessToken(user);
 
-    // Optionally rotate refresh token (recommended for security)
+    // Generate new refresh token with original preference
     const newRefreshToken = await this.generateRefreshToken(
       user,
-      true, // Assume remember me if they're using refresh token
+      originalRememberMe,
       storedToken.deviceInfo,
       storedToken.ipAddress,
       storedToken.userAgent,
@@ -145,12 +160,18 @@ export class AuthService {
     // Remove old refresh token
     await RefreshToken.deleteOne({ _id: storedToken._id });
 
-    this.logger.info("Access token refreshed", { userId: user._id });
+    this.logger.info("Access token refreshed", {
+      userId: user._id,
+      rememberMe: originalRememberMe,
+    });
 
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
       user,
+      expiresIn: originalRememberMe ? "30d" : "7d", // Keep for backward compatibility
+      accessTokenExpiresIn: "15m",
+      refreshTokenExpiresIn: originalRememberMe ? "30d" : "7d",
     };
   }
 

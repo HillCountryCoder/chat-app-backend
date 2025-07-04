@@ -15,6 +15,8 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: string;
+  accessTokenExpiresIn: string;
+  refreshTokenExpiresIn: string;
 }
 
 export interface UserListResponse {
@@ -98,6 +100,8 @@ export class UserService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
+      accessTokenExpiresIn: tokens.accessTokenExpiresIn,
+      refreshTokenExpiresIn: tokens.refreshTokenExpiresIn,
     };
   }
 
@@ -145,6 +149,8 @@ export class UserService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
+      accessTokenExpiresIn: tokens.accessTokenExpiresIn,
+      refreshTokenExpiresIn: tokens.refreshTokenExpiresIn,
     };
   }
 
@@ -257,6 +263,8 @@ export class UserService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
+      accessTokenExpiresIn: tokens.accessTokenExpiresIn,
+      refreshTokenExpiresIn: tokens.refreshTokenExpiresIn,
     };
   }
 
@@ -305,6 +313,8 @@ export class UserService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
+      accessTokenExpiresIn: tokens.accessTokenExpiresIn,
+      refreshTokenExpiresIn: tokens.refreshTokenExpiresIn,
     };
   }
 }
