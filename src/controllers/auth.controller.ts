@@ -107,9 +107,9 @@ export class AuthController {
         },
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-		expiresIn: tokens.expiresIn, // For backward compatibility
-		accessTokenExpiresIn: tokens.accessTokenExpiresIn,
-		refreshTokenExpiresIn: tokens.refreshTokenExpiresIn,
+        expiresIn: tokens.expiresIn, // For backward compatibility
+        accessTokenExpiresIn: tokens.accessTokenExpiresIn,
+        refreshTokenExpiresIn: tokens.refreshTokenExpiresIn,
       });
     } catch (error) {
       logger.error("Token refresh failed", { error });
@@ -224,7 +224,7 @@ export class AuthController {
 
       res.json({
         success: true,
-        data: { sessions },
+        sessions,
       });
     } catch (error) {
       logger.error("Get active sessions failed", { error });
