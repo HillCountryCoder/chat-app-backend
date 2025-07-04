@@ -58,7 +58,16 @@ const refreshTokenSchema = new Schema<RefreshTokenInterface>(
 );
 
 refreshTokenSchema.index({ userId: 1, createdAt: -1 });
-
+refreshTokenSchema.index({ userId: 1, expiresAt: 1 }); // For active sessions query
+refreshTokenSchema.index({ userId: 1, userAgent: 1, ipAddress: 1 }); // For device detection
+refreshTokenSchema.index({ userId: 1, lastUsed: -1 }); // For sorting by most recent
+refreshTokenSchema.index({ expiresAt: 1 }); // For cleanup operations
+refreshTokenSchema.index({
+  userId: 1,
+  userAgent: 1,
+  ipAddress: 1,
+  expiresAt: 1,
+});
 export const RefreshToken = model<RefreshTokenInterface>(
   "RefreshToken",
   refreshTokenSchema,

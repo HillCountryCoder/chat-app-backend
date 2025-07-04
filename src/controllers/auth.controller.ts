@@ -80,6 +80,7 @@ export class AuthController {
       next(error);
     }
   }
+
   static async refreshToken(req: Request, res: Response, next: NextFunction) {
     try {
       logger.debug("Processing token refresh request");
@@ -228,6 +229,62 @@ export class AuthController {
       });
     } catch (error) {
       logger.error("Get active sessions failed", { error });
+      next(error);
+    }
+  }
+
+  // 🔥 NEW: Add cleanup endpoints
+  static async cleanupSessions(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      logger.debug("Processing session cleanup request");
+
+      const user = req.user;
+
+      if (!user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      // Clean up expired sessions
+      await authService.cleanupExpiredSessions(user._id.toString());
+
+      // Clean up duplicate sessions
+      await authService.cleanupDuplicateSessions(user._id.toString());
+
+      logger.info("Session cleanup completed", { userId: user._id });
+
+      res.json({
+        success: true,
+        message: "Session cleanup completed successfully",
+      });
+    } catch (error) {
+      logger.error("Session cleanup failed", { error });
+      next(error);
+    }
+  }
+
+  // 🔥 NEW: Admin endpoint to clean up all expired sessions
+  static async cleanupAllSessions(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      logger.debug("Processing global session cleanup request");
+
+      await authService.cleanupExpiredSessions();
+
+      logger.info("Global session cleanup completed");
+
+      res.json({
+        success: true,
+        message: "Global session cleanup completed successfully",
+      });
+    } catch (error) {
+      logger.error("Global session cleanup failed", { error });
       next(error);
     }
   }

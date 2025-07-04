@@ -33,5 +33,11 @@ router.get("/me", authMiddleware, AuthController.getCurrentUser);
 router.post("/logout", authMiddleware, AuthController.logout);
 router.post("/logout-all", authMiddleware, AuthController.logoutAll);
 router.get("/sessions", authMiddleware, AuthController.getActiveSessions);
+router.post(
+  "/cleanup-sessions",
+  authMiddleware,
+  AuthController.cleanupSessions,
+);
 
+router.post("/cleanup-all-sessions", AuthController.cleanupAllSessions);
 export default router;

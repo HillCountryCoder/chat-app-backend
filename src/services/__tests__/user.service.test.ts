@@ -3,7 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UserService } from "../user.service";
 import { userRepository } from "../../repositories/user.repository";
 import { authService } from "../auth.service";
-import { ConflictError, NotFoundError, UnauthorizedError } from "../../common/errors";
+import {
+  ConflictError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../../common/errors";
 import { UserStatus } from "../../models";
 import { Types } from "mongoose";
 
@@ -158,6 +162,8 @@ describe("UserService", () => {
         accessToken: "access-token",
         refreshToken: "refresh-token",
         expiresIn: "30d",
+        accessTokenExpiresIn: "15m",
+        refreshTokenExpiresIn: "30d",
       };
 
       vi.mocked(userRepository.findOne).mockResolvedValue(null);
@@ -207,6 +213,8 @@ describe("UserService", () => {
         accessToken: "access-token",
         refreshToken: "refresh-token",
         expiresIn: "7d",
+        accessTokenExpiresIn: "15m",
+        refreshTokenExpiresIn: "30d",
       };
 
       vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser as any);
@@ -256,9 +264,13 @@ describe("UserService", () => {
         accessToken: "access-token",
         refreshToken: "refresh-token",
         expiresIn: "7d",
+        accessTokenExpiresIn: "15m",
+        refreshTokenExpiresIn: "30d",
       };
 
-      vi.mocked(userRepository.findByUsername).mockResolvedValue(mockUser as any);
+      vi.mocked(userRepository.findByUsername).mockResolvedValue(
+        mockUser as any,
+      );
       vi.mocked(authService.generateTokenPair).mockResolvedValue(mockTokens); // FIXED: Updated method name
 
       // Act
@@ -353,7 +365,9 @@ describe("UserService", () => {
         { _id: "user2", username: "testuser2" },
       ];
 
-      vi.mocked(userRepository.findAllUsers).mockResolvedValue(mockUsers as any);
+      vi.mocked(userRepository.findAllUsers).mockResolvedValue(
+        mockUsers as any,
+      );
       vi.mocked(userRepository.countUsers).mockResolvedValue(2);
 
       // Act
