@@ -5,6 +5,7 @@ import { AuthService } from "../auth.service";
 import jwt from "jsonwebtoken";
 import { UserInterface as User } from "../../models";
 import { UnauthorizedError } from "../../common/errors";
+import { RefreshToken } from "../../models/refresh-token.model";
 
 // Mock dependencies
 vi.mock("jsonwebtoken", async (importOriginal) => {
@@ -45,8 +46,8 @@ vi.mock("../../models/refresh-token.model", () => ({
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     }),
     findOne: vi.fn(),
-    deleteOne: vi.fn(),
-    deleteMany: vi.fn(),
+    deleteOne: vi.fn().mockResolvedValue({ deletedCount: 1 }),
+    deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }),
     find: vi.fn(),
   },
 }));
@@ -76,7 +77,16 @@ describe("AuthService", () => {
         accessToken: "mock-access-token",
         refreshToken: expect.any(String), // This will be the crypto-generated token
         expiresIn: "7d",
+        accessTokenExpiresIn: "15m",
+        refreshTokenExpiresIn: "7d",
       });
+      expect(RefreshToken.deleteMany).toHaveBeenCalledWith({
+        userId: "507f1f77bcf86cd799439011",
+        expiresAt: { $lt: expect.any(Date) },
+      });
+
+      // 🔥 ADD: Verify findOne was called to check for existing session
+      expect(RefreshToken.findOne).toHaveBeenCalled();
     });
   });
 

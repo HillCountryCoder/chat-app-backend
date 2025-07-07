@@ -91,14 +91,14 @@ describe("AuthController", () => {
 
       // FIXED: Mock the correct service method
       vi.mocked(userService.registerUserWithDeviceInfo).mockResolvedValue(
-        mockRegisterResponse as any
+        mockRegisterResponse as any,
       );
 
       // Act
       await AuthController.registerUser(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -132,13 +132,15 @@ describe("AuthController", () => {
       const mockError = new BadRequestError("User already exists");
 
       mockRequest.body = mockUserData;
-      vi.mocked(userService.registerUserWithDeviceInfo).mockRejectedValue(mockError);
+      vi.mocked(userService.registerUserWithDeviceInfo).mockRejectedValue(
+        mockError,
+      );
 
       // Act
       await AuthController.registerUser(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -173,14 +175,14 @@ describe("AuthController", () => {
 
       // FIXED: Mock the correct service method
       vi.mocked(userService.loginUserWithDeviceInfo).mockResolvedValue(
-        mockLoginResponse as any
+        mockLoginResponse as any,
       );
 
       // Act
       await AuthController.login(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -212,13 +214,15 @@ describe("AuthController", () => {
       const mockError = new UnauthorizedError("Invalid credentials");
 
       mockRequest.body = mockCredentials;
-      vi.mocked(userService.loginUserWithDeviceInfo).mockRejectedValue(mockError);
+      vi.mocked(userService.loginUserWithDeviceInfo).mockRejectedValue(
+        mockError,
+      );
 
       // Act
       await AuthController.login(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -245,14 +249,14 @@ describe("AuthController", () => {
 
       mockRequest.body = mockRefreshTokenData;
       vi.mocked(authService.refreshAccessToken).mockResolvedValue(
-        mockRefreshResponse as any
+        mockRefreshResponse as any,
       );
 
       // Act
       await AuthController.refreshToken(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -277,13 +281,11 @@ describe("AuthController", () => {
       await AuthController.refreshToken(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
-      expect(mockNext).toHaveBeenCalledWith(
-        expect.any(BadRequestError)
-      );
+      expect(mockNext).toHaveBeenCalledWith(expect.any(BadRequestError));
     });
   });
 
@@ -307,7 +309,7 @@ describe("AuthController", () => {
       await AuthController.logout(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -316,7 +318,7 @@ describe("AuthController", () => {
         message: "Logged out successfully",
       });
       expect(authService.revokeRefreshToken).toHaveBeenCalledWith(
-        "refresh-token"
+        "refresh-token",
       );
     });
 
@@ -334,7 +336,7 @@ describe("AuthController", () => {
       await AuthController.logout(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -357,7 +359,7 @@ describe("AuthController", () => {
       await AuthController.logoutAll(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -376,13 +378,11 @@ describe("AuthController", () => {
       await AuthController.logoutAll(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
-      expect(mockNext).toHaveBeenCalledWith(
-        expect.any(UnauthorizedError)
-      );
+      expect(mockNext).toHaveBeenCalledWith(expect.any(UnauthorizedError));
     });
   });
 
@@ -404,7 +404,7 @@ describe("AuthController", () => {
       await AuthController.getCurrentUser(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
@@ -429,13 +429,11 @@ describe("AuthController", () => {
       await AuthController.getCurrentUser(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
-      expect(mockNext).toHaveBeenCalledWith(
-        expect.any(UnauthorizedError)
-      );
+      expect(mockNext).toHaveBeenCalledWith(expect.any(UnauthorizedError));
     });
   });
 
@@ -457,20 +455,20 @@ describe("AuthController", () => {
       (mockRequest as any).user = mockUser;
 
       vi.mocked(authService.getUserActiveSessions).mockResolvedValue(
-        mockSessions as any
+        mockSessions as any,
       );
 
       // Act
       await AuthController.getActiveSessions(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
       expect(responseData).toEqual({
         success: true,
-        data: { sessions: mockSessions },
+        sessions: mockSessions,
       });
       expect(authService.getUserActiveSessions).toHaveBeenCalledWith("user123");
     });
@@ -483,13 +481,11 @@ describe("AuthController", () => {
       await AuthController.getActiveSessions(
         mockRequest as Request,
         mockResponse as Response,
-        mockNext
+        mockNext,
       );
 
       // Assert
-      expect(mockNext).toHaveBeenCalledWith(
-        expect.any(UnauthorizedError)
-      );
+      expect(mockNext).toHaveBeenCalledWith(expect.any(UnauthorizedError));
     });
   });
 });

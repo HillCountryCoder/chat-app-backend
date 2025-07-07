@@ -184,6 +184,8 @@ describe("UserService", () => {
         accessToken: "access-token", // FIXED: Updated property names
         refreshToken: "refresh-token",
         expiresIn: "30d",
+        accessTokenExpiresIn: "15m",
+        refreshTokenExpiresIn: "30d",
       });
     });
   });
@@ -236,6 +238,8 @@ describe("UserService", () => {
         accessToken: "access-token", // FIXED: Updated property names
         refreshToken: "refresh-token",
         expiresIn: "7d",
+        accessTokenExpiresIn: "15m",
+        refreshTokenExpiresIn: "30d",
       });
       expect(mockUser.save).toHaveBeenCalled();
     });
