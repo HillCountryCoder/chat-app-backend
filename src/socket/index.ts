@@ -9,6 +9,11 @@ import { Server as HttpServer } from "http";
 import { unreadMessagesService } from "../services/unread-messages.service";
 import { env } from "process";
 import { registerMessageReactionHandlers } from "./message-reaction.handler";
+import {
+  registerPresenceHandlers,
+  setupPresenceBroadcasting,
+} from "../presence/socket/presence.handler";
+import { PresenceManager } from "../presence/presence-manager";
 
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
@@ -31,6 +36,12 @@ export const initializeSocketServer = (server: HttpServer) => {
 
   // Socket authentication middleware
   io.use(socketAuthMiddleware);
+  const presenceManager = (server as any).app?.get(
+    "presenceManager",
+  ) as PresenceManager;
+  if (presenceManager) {
+    setupPresenceBroadcasting(io, presenceManager);
+  }
 
   io.on("connection", (socket) => {
     try {
@@ -53,6 +64,7 @@ export const initializeSocketServer = (server: HttpServer) => {
       registerChannelHandlers(io, socket, userId);
       registerMessageReactionHandlers(io, socket, userId);
       registerAttachmentHandlers(io, socket, userId);
+      registerPresenceHandlers(io, socket, userId);
 
       // Send initial unread counts
       async function sendInitialUnreadCounts() {
