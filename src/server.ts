@@ -1,34 +1,22 @@
-// src/server.ts
+// src/server.ts - Fixed to work with your actual code structure
 import express from "express";
-import http from "http";
-import mongoose from "mongoose";
-import cors from "cors";
-import fs from "fs";
-import path from "path";
-import { createLogger, httpLogger } from "./common/logger";
-import { env } from "./common/environment";
-import { NotFoundError } from "./common/errors";
-import { errorMiddleware } from "./common/middlewares/error.middleware";
-import { initializeDatabase } from "./common/database/init";
-import routes from "./routes";
-import healthRoutes from "./routes/health.routes";
+import { createServer } from "http";
+import { connectRedis, redisClient } from "./common/redis/client";
+import { createLogger } from "./common/logger";
 import { initializeSocketServer } from "./socket";
-import { connectRedis } from "./common/redis/client";
-
-const logsDir = path.join(process.cwd(), "logs");
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir);
-}
-
-const logger = createLogger("main");
+import routes from "./routes";
+import cors from "cors";
+import { errorMiddleware } from "./common/middlewares";
+import { PresenceManager } from "./presence/presence-manager";
+import { PresenceHistoryService } from "./presence/services/presence-history.service";
+import { initializeDatabase } from "./common/database/init";
+import { env } from "./common/environment";
+import { ServiceLocator } from "./common/service-locator";
 
 const app = express();
-// Create HTTP server
-const server = http.createServer(app);
-
-// Initialize Socket.IO with the HTTP server - IMPORTANT: Do this before defining Express routes
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const io = initializeSocketServer(server);
+const httpServer = createServer(app);
+const serviceLocator = ServiceLocator.getInstance();
+const logger = createLogger("main");
 const corsOrigins = env.CORS_ORIGIN
   ? env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
   : "*";
@@ -39,87 +27,147 @@ app.use(
     credentials: true,
   }),
 );
+// Middleware
 app.use(express.json());
-app.use(httpLogger(logger)); // Add HTTP request logging
-app.use(
-  "/favicon.ico",
-  express.static(path.join(__dirname, "../public/favicon.ico")),
-);
+app.use(express.urlencoded({ extended: true }));
 
-// Define routes
-app.use("/health", healthRoutes);
-app.get("/", (req, res) => {
-  res.send("Chat Application is running!!");
-});
-
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "up",
-    environment: env.NODE_ENV,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.use("/api", routes);
-
-// IMPORTANT: This 404 handler should only run for non-socket.io routes
-app.use((req, res, next) => {
-  // Skip handling socket.io routes
-  if (req.url.startsWith("/socket.io/")) {
-    return next();
-  }
-  next(new NotFoundError("route"));
-});
-
-app.use(errorMiddleware);
-
-// Start server
-const PORT = env.PORT;
-async function startApplication() {
+async function startServer() {
   try {
+    // Connect to database
     await initializeDatabase();
+    logger.info("Connected to MongoDB");
 
+    // Connect to Redis
     await connectRedis();
+    logger.info("Connected to Redis");
 
-    server.listen(PORT, () => {
-      logger.info(`Server started successfully in ${env.NODE_ENV} mode`, PORT);
-      logger.info(`Server is running at http://localhost:${PORT}`);
+    // Initialize Presence Manager
+    const presenceManager = new PresenceManager(redisClient);
+    // Register services in service locator
+    serviceLocator.register("presenceManager", presenceManager);
+
+    // Initialize Socket.IO server (this will set up all socket handlers including presence)
+    const io = initializeSocketServer(httpServer);
+    // Register Socket.IO in service locator
+    serviceLocator.register("socketIO", io);
+    // Store io instance in app if needed elsewhere
+    app.set("io", io);
+
+    // Routes
+    app.use("/api", routes);
+
+    // Health check
+    app.get("/health", (req, res) => {
+      res.json({
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        services: {
+          database: "connected",
+          redis: "connected",
+          presence: "active",
+        },
+      });
     });
-  } catch (error: any) {
-    logger.error("Failed to start application", error);
+
+    // Error handling middleware
+    app.use(errorMiddleware);
+
+    // Start server
+    const PORT = process.env.PORT || 5000;
+    httpServer.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT}`);
+    });
+
+    // Setup background jobs for presence system
+    setupBackgroundJobs();
+
+    // Graceful shutdown
+    process.on("SIGTERM", async () => {
+      logger.info("SIGTERM received, shutting down gracefully");
+
+      // Close HTTP server
+      httpServer.close(() => {
+        logger.info("HTTP server closed");
+      });
+
+      // Cleanup presence manager
+      presenceManager.destroy();
+
+      // Close Redis connection
+      await redisClient.quit();
+
+      process.exit(0);
+    });
+
+    process.on("SIGINT", async () => {
+      logger.info("SIGINT received, shutting down gracefully");
+
+      // Close HTTP server
+      httpServer.close(() => {
+        logger.info("HTTP server closed");
+      });
+
+      // Cleanup presence manager
+      presenceManager.destroy();
+
+      // Close Redis connection
+      await redisClient.quit();
+
+      process.exit(0);
+    });
+  } catch (error) {
+    logger.error("Failed to start server:", error);
     process.exit(1);
   }
 }
 
-startApplication();
-// Handle uncaught exceptions
-process.on("uncaughtException", (error) => {
-  const errorObject = {
-    error: error.message,
-    stack: error.stack,
-  };
-  logger.error("Uncaught Exception", errorObject);
-  process.exit(1);
-});
+// Background jobs for presence system
+function setupBackgroundJobs() {
+  // Clean up old presence history daily
+  const cleanupJob = setInterval(async () => {
+    try {
+      const deletedCount = await PresenceHistoryService.cleanupOldHistory(90); // Keep 90 days
+      logger.info(
+        `Presence cleanup job completed, deleted ${deletedCount} records`,
+      );
+    } catch (error) {
+      logger.error("Error in presence cleanup job:", error);
+    }
+  }, 24 * 60 * 60 * 1000); // Run every 24 hours
 
-// Handle unhandled promise rejections
-process.on("unhandledRejection", (reason) => {
-  const errorObject = {
-    reason: reason instanceof Error ? reason.message : reason,
-    stack: reason instanceof Error ? reason.stack : undefined,
-  };
-  logger.error("Unhandled Rejection", errorObject);
-});
+  // End orphaned sessions every hour
+  const sessionCleanupJob = setInterval(async () => {
+    try {
+      const activeSessions = await PresenceHistoryService.getActiveSessions();
+      const now = new Date();
 
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  logger.info("SIGTERM received, shutting down gracefully");
-  mongoose.connection.close();
-  process.exit(0);
-});
+      for (const session of activeSessions) {
+        // End sessions that started more than 24 hours ago without an end time
+        const sessionAge = now.getTime() - session.sessionStart.getTime();
+        if (sessionAge > 24 * 60 * 60 * 1000) {
+          await PresenceHistoryService.endSession(session._id.toString());
+          logger.info(`Ended orphaned session: ${session._id}`);
+        }
+      }
+    } catch (error) {
+      logger.error("Error in session cleanup job:", error);
+    }
+  }, 60 * 60 * 1000); // Run every hour
 
-process.on("SIGINT", () => {
-  logger.info("SIGINT received, shutting down gracefully");
-  mongoose.connection.close();
-  process.exit(0);
-});
+  // Cleanup jobs on shutdown
+  process.on("SIGTERM", () => {
+    clearInterval(cleanupJob);
+    clearInterval(sessionCleanupJob);
+  });
+
+  process.on("SIGINT", () => {
+    clearInterval(cleanupJob);
+    clearInterval(sessionCleanupJob);
+  });
+}
+
+// Start the server
+startServer();
+
+// Export for testing
+export { app, httpServer };

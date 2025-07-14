@@ -5,6 +5,7 @@ import { ErrorHandler, ValidationError } from "../../common/errors";
 import { PresenceManager, PresenceStatus } from "../presence-manager";
 import { PresenceHistoryService } from "../services";
 import { PRESENCE_STATUS } from "../constants";
+import { ServiceLocator } from "../../common/service-locator";
 
 const logger = createSocketLogger(createLogger("presence-socket"));
 const errorHandler = new ErrorHandler(createLogger("socket-error-handler"));
@@ -34,14 +35,18 @@ export const registerPresenceHandlers = (
   socket: AuthenticatedSocket,
   userId: string,
 ) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const presenceManager = (socket as any).app?.get(
-    "presenceManager",
-  ) as PresenceManager;
+  const serviceLocator = ServiceLocator.getInstance();
 
-  if (!presenceManager) {
-    logger.error(socket.id, new Error("PresenceManager not available"));
-    return;
+  // Get presence manager from service locator
+  let presenceManager: PresenceManager;
+
+  try {
+    presenceManager = serviceLocator.getPresenceManager();
+  } catch (error) {
+    if (error) {
+      logger.error(socket.id, new Error("PresenceManager not available"));
+      return;
+    }
   }
 
   let sessionId: string | null = null;

@@ -14,6 +14,7 @@ import {
   setupPresenceBroadcasting,
 } from "../presence/socket/presence.handler";
 import { PresenceManager } from "../presence/presence-manager";
+import { ServiceLocator } from "../common/service-locator";
 
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
@@ -36,11 +37,17 @@ export const initializeSocketServer = (server: HttpServer) => {
 
   // Socket authentication middleware
   io.use(socketAuthMiddleware);
-  const presenceManager = (server as any).app?.get(
-    "presenceManager",
-  ) as PresenceManager;
-  if (presenceManager) {
+  const serviceLocator = ServiceLocator.getInstance();
+  try {
+    const presenceManager = serviceLocator.getPresenceManager();
     setupPresenceBroadcasting(io, presenceManager);
+    logger.info("Presence broadcasting setup completed");
+  } catch (error) {
+    if (error instanceof Error) {
+      logger.warn(
+        "PresenceManager not available - presence features will be disabled",
+      );
+    }
   }
 
   io.on("connection", (socket) => {

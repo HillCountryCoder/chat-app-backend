@@ -19,12 +19,10 @@ const UserConnectionSchema = new Schema<IUserConnection>(
     userId: {
       type: String,
       required: true,
-      index: true,
     },
     connectionId: {
       type: String,
       required: true,
-      index: true,
     },
     connectionType: {
       type: String,
@@ -33,14 +31,12 @@ const UserConnectionSchema = new Schema<IUserConnection>(
     },
     channelId: {
       type: String,
-      index: true,
       required: function (this: IUserConnection) {
         return this.connectionType === "channel_member";
       },
     },
     directMessageId: {
       type: String,
-      index: true,
       required: function (this: IUserConnection) {
         return this.connectionType === "direct_message";
       },
@@ -51,7 +47,7 @@ const UserConnectionSchema = new Schema<IUserConnection>(
   },
 );
 
-// Compound indexes for efficient presence queries
+// Create indexes manually to avoid duplicates
 UserConnectionSchema.index({ userId: 1, connectionType: 1 });
 UserConnectionSchema.index({ connectionId: 1, connectionType: 1 });
 UserConnectionSchema.index({ channelId: 1 }, { sparse: true });

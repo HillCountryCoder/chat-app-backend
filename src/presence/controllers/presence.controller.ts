@@ -2,9 +2,10 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../../common/types";
 import { createLogger } from "../../common/logger";
 import { ErrorHandler, ValidationError } from "../../common/errors";
-import { PresenceManager, PresenceStatus } from "../presence-manager";
+import { PresenceStatus } from "../presence-manager";
 import { ConnectionService, PresenceHistoryService } from "../services";
 import { CONNECTION_TYPE } from "../constants";
+import { ServiceLocator } from "../../common/service-locator";
 
 const logger = createLogger("presence-controller");
 const errorHandler = new ErrorHandler(logger);
@@ -16,7 +17,8 @@ export class PresenceController {
   static async getMyPresence(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
-      const presenceManager = req.app.get("presenceManager") as PresenceManager;
+      const serviceLocator = ServiceLocator.getInstance();
+      const presenceManager = serviceLocator.getPresenceManager();
 
       const presence = await presenceManager.getUserPresence(userId);
       if (!presence) {
@@ -46,8 +48,8 @@ export class PresenceController {
           "Invalid status. Must be online, away, or busy",
         );
       }
-
-      const presenceManager = req.app.get("presenceManager") as PresenceManager;
+      const serviceLocator = ServiceLocator.getInstance();
+      const presenceManager = serviceLocator.getPresenceManager();
       await presenceManager.processHeartbeat(userId, status);
 
       res.json({ success: true });
@@ -71,7 +73,8 @@ export class PresenceController {
         throw new ValidationError("Maximum 100 users per request");
       }
 
-      const presenceManager = req.app.get("presenceManager") as PresenceManager;
+      const serviceLocator = ServiceLocator.getInstance();
+      const presenceManager = serviceLocator.getPresenceManager();
       const presenceMap = await presenceManager.getBulkPresence(userIds);
 
       const result: Record<string, PresenceStatus> = {};
@@ -94,7 +97,8 @@ export class PresenceController {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
       const cursor = req.query.cursor as string | undefined;
 
-      const presenceManager = req.app.get("presenceManager") as PresenceManager;
+      const serviceLocator = ServiceLocator.getInstance();
+      const presenceManager = serviceLocator.getPresenceManager();
       const onlineUsers = await presenceManager.getOnlineUsers(limit, cursor);
 
       res.json(onlineUsers);
@@ -136,7 +140,8 @@ export class PresenceController {
       }
 
       // Get presence for all connections
-      const presenceManager = req.app.get("presenceManager") as PresenceManager;
+      const serviceLocator = ServiceLocator.getInstance();
+      const presenceManager = serviceLocator.getPresenceManager();
       const presenceMap = await presenceManager.getBulkPresence(connectionIds);
 
       // Convert Map to object
@@ -293,7 +298,8 @@ export class PresenceController {
       //     return res.status(403).json({ error: "Admin access required" });
       //   }
 
-      const presenceManager = req.app.get("presenceManager") as PresenceManager;
+      const serviceLocator = ServiceLocator.getInstance();
+      const presenceManager = serviceLocator.getPresenceManager();
       const stats = await presenceManager.getPresenceStats();
 
       res.json(stats);
