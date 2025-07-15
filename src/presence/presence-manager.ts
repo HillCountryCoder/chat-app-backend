@@ -192,19 +192,38 @@ export class PresenceManager extends EventEmitter {
 
       const newCursor = scanResult.cursor.toString();
       const keys = scanResult.keys;
-
+      logger.debug("🔍 Redis scan result:", {
+        cursor: scanResult.cursor,
+        keysFound: scanResult.keys.length,
+        keys: scanResult.keys,
+      });
       const onlineUsers: PresenceStatus[] = [];
       if (keys.length > 0) {
         const multi = this.redis.multi();
         keys.forEach((key) => multi.get(key));
         const results = await multi.exec();
 
-        results?.forEach((result) => {
+        results?.forEach((result, index) => {
           if (result && Array.isArray(result) && result[1]) {
-            const presence: PresenceStatus = JSON.parse(result[1] as string);
-            if (presence.status !== "offline") {
-              presence.lastSeen = new Date(presence.lastSeen);
-              onlineUsers.push(presence);
+            try {
+              const presence: PresenceStatus = JSON.parse(result[1] as string);
+              if (presence.status !== "offline") {
+                presence.lastSeen = new Date(presence.lastSeen);
+                onlineUsers.push(presence);
+              }
+            } catch (e) {
+              logger.error(`Failed to parse presence for ${keys[index]}:`, e);
+            }
+          } else if (typeof result === "string") {
+            // Handle direct string case
+            try {
+              const presence: PresenceStatus = JSON.parse(result);
+              if (presence.status !== "offline") {
+                presence.lastSeen = new Date(presence.lastSeen);
+                onlineUsers.push(presence);
+              }
+            } catch (e) {
+              logger.error(`Failed to parse presence for ${keys[index]}:`, e);
             }
           }
         });
