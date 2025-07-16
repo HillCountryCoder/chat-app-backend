@@ -50,7 +50,7 @@ export const registerPresenceHandlers = (
   }
 
   let sessionId: string | null = null;
-  let heartbeatInterval: NodeJS.Timeout | null = null;
+//   let heartbeatInterval: NodeJS.Timeout | null = null;
 
   socket.on("authenticate_presence", async (data, callback) => {
     try {
@@ -61,30 +61,27 @@ export const registerPresenceHandlers = (
         userAgent: socket.handshake.headers["user-agent"],
         socketId: socket.id,
       };
-
-      await presenceManager.processHeartbeat(
-        userId,
-        PRESENCE_STATUS.ONLINE,
-        deviceInfo,
-      );
+      // Use the status from client or default to ONLINE
+      const initialStatus = data?.status || PRESENCE_STATUS.ONLINE;
+      await presenceManager.processHeartbeat(userId, initialStatus, deviceInfo);
 
       sessionId = await PresenceHistoryService.recordSession(
         userId,
-        PRESENCE_STATUS.ONLINE,
+        initialStatus,
         deviceInfo,
       );
 
-      heartbeatInterval = setInterval(async () => {
-        try {
-          await presenceManager.processHeartbeat(
-            userId,
-            PRESENCE_STATUS.ONLINE,
-            deviceInfo,
-          );
-        } catch (error) {
-          logger.error(socket.id, error as Error);
-        }
-      }, 30000);
+    //   heartbeatInterval = setInterval(async () => {
+    //     try {
+    //       await presenceManager.processHeartbeat(
+    //         userId,
+    //         initialStatus,
+    //         deviceInfo,
+    //       );
+    //     } catch (error) {
+    //       logger.error(socket.id, error as Error);
+    //     }
+    //   }, 30000);
       socket.join(`presence:${userId}`);
       if (typeof callback === "function") {
         callback({
@@ -314,9 +311,9 @@ export const registerPresenceHandlers = (
       }
 
       // Clear heartbeat interval
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-      }
+    //   if (heartbeatInterval) {
+    //     clearInterval(heartbeatInterval);
+    //   }
 
       logger.event(socket.id, "presence_disconnected", { userId });
     } catch (error) {
