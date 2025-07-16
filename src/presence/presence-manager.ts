@@ -127,16 +127,23 @@ export class PresenceManager extends EventEmitter {
       });
 
       const results = await multi.exec();
+
       results?.forEach((result, index) => {
-        if (result && Array.isArray(result) && result.length > 1 && result[1]) {
-          const presence: PresenceStatus = JSON.parse(result[1] as string);
-          presence.lastSeen = new Date(presence.lastSeen);
-          presenceMap.set(userIds[index], presence);
+        if (result && typeof result === "string") {
+          try {
+            const presence: PresenceStatus = JSON.parse(result);
+            presence.lastSeen = new Date(presence.lastSeen);
+            presenceMap.set(userIds[index], presence);
+          } catch (e) {
+            logger.error(`Failed to parse presence for ${userIds[index]}:`, e);
+          }
         }
       });
     } catch (error) {
       logger.error("Error getting bulk presence:", error);
     }
+
+    console.log("🔍 Final getBulkPresence map:", presenceMap);
     return presenceMap;
   }
 
@@ -192,11 +199,6 @@ export class PresenceManager extends EventEmitter {
 
       const newCursor = scanResult.cursor.toString();
       const keys = scanResult.keys;
-      logger.debug("🔍 Redis scan result:", {
-        cursor: scanResult.cursor,
-        keysFound: scanResult.keys.length,
-        keys: scanResult.keys,
-      });
       const onlineUsers: PresenceStatus[] = [];
       if (keys.length > 0) {
         const multi = this.redis.multi();
