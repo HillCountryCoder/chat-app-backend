@@ -27,8 +27,9 @@ export class PresenceController {
           status: "offline",
           lastSeen: null,
         });
+      } else {
+        res.json(presence);
       }
-      res.json(presence);
     } catch (error) {
       if (error instanceof Error) {
         errorHandler.handleError(error, res);

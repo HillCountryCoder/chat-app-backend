@@ -106,7 +106,12 @@ export class ChatBackendStack extends cdk.Stack {
       bucketName: `chat-thumbnails-${props.stage}-${this.account}`,
       cors: [
         {
-          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
+          allowedMethods: [
+            s3.HttpMethods.GET,
+            s3.HttpMethods.PUT,
+            s3.HttpMethods.POST,
+            s3.HttpMethods.HEAD,
+          ],
           allowedOrigins: ["*"],
           allowedHeaders: ["*"],
         },
@@ -248,7 +253,9 @@ export class ChatBackendStack extends cdk.Stack {
 
       // Grant S3 permissions to ECS task
       this.mediaBucket.grantReadWrite(this.ecsService.taskDefinition.taskRole);
-      this.thumbnailBucket.grantRead(this.ecsService.taskDefinition.taskRole);
+      this.thumbnailBucket.grantReadWrite(
+        this.ecsService.taskDefinition.taskRole,
+      );
 
       // Create a Network Load Balancer
       this.networkLoadBalancer = new elbv2.NetworkLoadBalancer(
