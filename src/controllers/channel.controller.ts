@@ -5,7 +5,7 @@ import { channelService } from "../services/channel.service";
 import { createLogger } from "../common/logger";
 import { z } from "zod";
 import { ValidationError, UnauthorizedError } from "../common/errors";
-import { ChannelType } from "../models";
+import { ChannelType, ContentType } from "../models";
 
 const logger = createLogger("channel-controller");
 
@@ -38,6 +38,59 @@ const createThreadSchema = z.object({
   content: z.string().min(1).max(2000),
   title: z.string().max(100).optional(),
 });
+
+const richContentSchema = z
+  .array(
+    z
+      .object({
+        id: z.string().optional(),
+        type: z.string(),
+        children: z.array(
+          z
+            .object({
+              text: z.string().optional(),
+            })
+            .passthrough(), // Allow additional properties for formatting
+        ),
+      })
+      .passthrough(), // Allow additional properties for node attributes
+  )
+  .optional();
+
+const editMessageSchema = z
+  .object({
+    content: z.string().min(1).max(2000),
+    richContent: richContentSchema,
+    contentType: z.nativeEnum(ContentType).optional(),
+  })
+  .refine(
+    (data) => {
+      if (
+        data.richContent &&
+        data.content &&
+        data.contentType !== ContentType.RICH
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Content type must be 'rich' when rich content is provided",
+      path: ["contentType"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.contentType === ContentType.RICH && !data.richContent) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Rich content must be provided when content type is 'rich'",
+      path: ["richContent"],
+    },
+  );
 
 export class ChannelController {
   static async createChannel(
@@ -465,6 +518,65 @@ export class ChannelController {
 
       const members = await channelService.getChannelMembers(id, userId);
       res.json(members);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async editMessage(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id, messageId } = req.params;
+      logger.debug(`Editing message ${messageId} in channel ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      // Validate request body
+      let validatedData;
+      try {
+        validatedData = editMessageSchema.parse(req.body);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          throw new ValidationError(
+            error.errors.map((e) => e.message).join(", "),
+          );
+        }
+        throw error;
+      }
+
+      const userId = req.user._id.toString();
+
+      // Determine content type if not explicitly provided
+      let contentType = validatedData.contentType;
+      if (!contentType) {
+        contentType = validatedData.richContent
+          ? ContentType.RICH
+          : ContentType.TEXT;
+      }
+
+      const processedRichContent = validatedData.richContent?.map((node) => ({
+        ...node,
+        children: node.children.map((child) => ({
+          ...child,
+          text: child.text || "",
+        })),
+      }));
+
+      const result = await channelService.editMessage({
+        channelId: id,
+        messageId,
+        userId,
+        content: validatedData.content,
+        richContent: processedRichContent,
+        contentType,
+      });
+
+      res.json(result);
     } catch (error) {
       next(error);
     }

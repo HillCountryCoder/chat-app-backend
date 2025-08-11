@@ -27,6 +27,8 @@ router.get(
   "/:id/stats/rich-content",
   DirectMessageController.getRichContentStats,
 );
+
+router.put("/:id/messages/:messageId", DirectMessageController.editMessage);
 // Send a new message
 router.post("/messages", DirectMessageController.sendMessage);
 

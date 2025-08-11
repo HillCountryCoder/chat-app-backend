@@ -6,3 +6,4 @@ export * from "./direct-message.model";
 export * from "./message.model";
 export * from "./attachment.model";
 export * from "./thread.model";
+export { ContentType } from "./message.model";

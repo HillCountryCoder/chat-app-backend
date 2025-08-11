@@ -253,4 +253,52 @@ export const registerDirectMessageHandlers = (
       }
     }
   });
+
+  socket.on("edit_direct_message", async (data, callback) => {
+    try {
+      logger.event(socket.id, "edit_direct_message", data);
+      const { directMessageId, messageId, content, richContent, contentType } =
+        data;
+
+      if (!directMessageId || !messageId || !content) {
+        throw new ValidationError(
+          "directMessageId, messageId, and content are required",
+        );
+      }
+      const result = await directMessageService.editMessage({
+        directMessageId,
+        messageId,
+        userId,
+        content,
+        richContent,
+        contentType,
+      });
+
+      // Emit to the direct message room
+      io.to(`direct_message:${directMessageId}`).emit("message_updated", {
+        message: result.message,
+        directMessageId,
+      });
+
+      // Send confirmation to sender
+      if (typeof callback === "function") {
+        callback({
+          success: true,
+          message: result.message,
+        });
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(socket.id, error);
+
+        if (typeof callback === "function") {
+          errorHandler.handleSocketError(error, socket);
+          callback({
+            success: false,
+            error: error.message || "Failed to edit message",
+          });
+        }
+      }
+    }
+  });
 };

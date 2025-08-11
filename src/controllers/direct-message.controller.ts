@@ -79,6 +79,41 @@ const getMessagesSchema = z.object({
   after: z.string().optional(),
 });
 
+const editMessageSchema = z
+  .object({
+    content: z.string().min(1).max(2000),
+    richContent: richContentSchema,
+    contentType: z.nativeEnum(ContentType).optional(),
+  })
+  .refine(
+    (data) => {
+      if (
+        data.richContent &&
+        data.content &&
+        data.contentType !== ContentType.RICH
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Content type must be 'rich' when rich content is provided",
+      path: ["contentType"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.contentType === ContentType.RICH && !data.richContent) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Rich content must be provided when content type is 'rich'",
+      path: ["richContent"],
+    },
+  );
+
 export class DirectMessageController {
   static async getDirectMessages(
     req: AuthenticatedRequest,
@@ -297,6 +332,74 @@ export class DirectMessageController {
       const stats = await directMessageService.getRichContentStats(id, userId);
       res.json(stats);
     } catch (error) {
+      next(error);
+    }
+  }
+
+  static async editMessage(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id, messageId } = req.params;
+      logger.debug(`Editing message ${messageId} in direct message ${id}`);
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+
+      // Validate request body
+      let validatedData;
+      try {
+        validatedData = editMessageSchema.parse(req.body);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          throw new ValidationError(
+            error.errors.map((e) => e.message).join(", "),
+          );
+        }
+        throw error;
+      }
+
+      const userId = req.user._id.toString();
+
+      // Determine content type if not explicitly provided
+      let contentType = validatedData.contentType;
+      if (!contentType) {
+        contentType = validatedData.richContent
+          ? ContentType.RICH
+          : ContentType.TEXT;
+      }
+
+      // Process rich content to ensure all text fields are strings
+      const processedRichContent = validatedData.richContent?.map((node) => ({
+        ...node,
+        children: node.children.map((child) => ({
+          ...child,
+          text: child.text || "",
+        })),
+      }));
+
+      const result = await directMessageService.editMessage({
+        directMessageId: id,
+        messageId,
+        userId,
+        content: validatedData.content,
+        richContent: processedRichContent,
+        contentType,
+      });
+
+      logger.info("Message edited successfully", {
+        messageId,
+        directMessageId: id,
+        contentType,
+        hasRichContent: !!validatedData.richContent,
+      });
+
+      res.json(result);
+    } catch (error) {
+      logger.error("Error editing message", { error });
       next(error);
     }
   }

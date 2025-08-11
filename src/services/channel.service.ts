@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/services/channel.service.ts - Phase 3 additions only
 import { channelRepository } from "../repositories/channel.repository";
 import { channelMemberRepository } from "../repositories/channel-member.repository";
@@ -41,6 +42,13 @@ export interface ChannelWithMembersDTO {
   channel: ChannelInterface;
   members: ChannelMemberInterface[];
 }
+
+type PlateValue = Array<{
+  id?: string;
+  type: string;
+  children: Array<{ text: string; [key: string]: any }>;
+  [key: string]: any;
+}>;
 
 export class ChannelService {
   private static instance: ChannelService;
@@ -655,6 +663,37 @@ export class ChannelService {
       options,
     );
     return await messageService.populateMessageAttachments(mediaMessages);
+  }
+
+  async editMessage(data: {
+    channelId: string;
+    messageId: string;
+    userId: string;
+    content: string;
+    richContent?: PlateValue;
+    contentType?: string;
+  }) {
+    const { channelId, messageId, userId, content, richContent, contentType } =
+      data;
+
+    // Verify user has access to this channel
+    await this.getChannelById(channelId, userId);
+
+    // Edit the message using messageService
+    const updatedMessage = await messageService.editMessage({
+      messageId,
+      userId,
+      content,
+      richContent,
+      contentType,
+      contextType: "channel",
+      contextId: channelId,
+    });
+
+    return {
+      message: updatedMessage,
+      success: true,
+    };
   }
 }
 

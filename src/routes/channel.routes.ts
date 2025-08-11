@@ -30,5 +30,6 @@ router.post(
   "/:id/threads/:threadId/messages",
   ChannelController.sendThreadMessage,
 );
+router.put("/:id/messages/:messageId", ChannelController.editMessage);
 router.post("/:id/read", ChannelController.markAsRead);
 export default router;

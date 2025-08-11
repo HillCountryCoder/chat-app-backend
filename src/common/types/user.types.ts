@@ -1,5 +1,3 @@
-import mongoose from "mongoose";
-
 // Pick only the fields you need for authentication
 export type UserFromToken = {
   _id: unknown;

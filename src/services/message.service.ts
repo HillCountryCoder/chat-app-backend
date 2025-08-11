@@ -12,6 +12,10 @@ import { v4 as uuidv4 } from "uuid";
 import { createLogger } from "../common/logger";
 import { attachmentService } from "./attachment.service";
 import mongoose from "mongoose";
+import {
+  EDIT_TIME_LIMIT,
+  validateEditTimeLimit,
+} from "./validation/message.validation";
 
 const logger = createLogger("message-service");
 
@@ -104,13 +108,13 @@ export class MessageService {
     // Validate content type consistency
     if (richContent && finalContentType !== ContentType.RICH) {
       throw new ValidationError(
-        "Content type must be 'rich' when rich content is provided"
+        "Content type must be 'rich' when rich content is provided",
       );
     }
 
     if (!richContent && finalContentType === ContentType.RICH) {
       throw new ValidationError(
-        "Rich content must be provided when content type is 'rich'"
+        "Rich content must be provided when content type is 'rich'",
       );
     }
 
@@ -165,27 +169,31 @@ export class MessageService {
 
     // Validate each node in the rich content
     for (const node of richContent) {
-      if (typeof node !== 'object' || node === null) {
+      if (typeof node !== "object" || node === null) {
         throw new ValidationError("Each rich content node must be an object");
       }
 
-      if (!node.type || typeof node.type !== 'string') {
+      if (!node.type || typeof node.type !== "string") {
         throw new ValidationError("Each rich content node must have a type");
       }
 
       if (!Array.isArray(node.children)) {
-        throw new ValidationError("Each rich content node must have children array");
+        throw new ValidationError(
+          "Each rich content node must have children array",
+        );
       }
 
       // Validate children
       for (const child of node.children) {
-        if (typeof child !== 'object' || child === null) {
+        if (typeof child !== "object" || child === null) {
           throw new ValidationError("Each child must be an object");
         }
-        
+
         // Text nodes must have text property
-        if ('text' in child && typeof child.text !== 'string') {
-          throw new ValidationError("Text nodes must have string text property");
+        if ("text" in child && typeof child.text !== "string") {
+          throw new ValidationError(
+            "Text nodes must have string text property",
+          );
         }
       }
     }
@@ -194,12 +202,12 @@ export class MessageService {
   // Helper method to extract plain text from rich content
   extractPlainTextFromRichContent(richContent: PlateValue): string {
     return richContent
-      .map(node => 
+      .map((node) =>
         node.children
-          ?.map(child => 'text' in child ? child.text : '')
-          .join('')
+          ?.map((child) => ("text" in child ? child.text : ""))
+          .join(""),
       )
-      .join('\n')
+      .join("\n")
       .trim();
   }
 
@@ -334,13 +342,13 @@ export class MessageService {
           totalMessages: { $sum: 1 },
           richMessages: {
             $sum: {
-              $cond: [{ $eq: ["$contentType", "rich"] }, 1, 0]
-            }
+              $cond: [{ $eq: ["$contentType", "rich"] }, 1, 0],
+            },
           },
           plainMessages: {
             $sum: {
-              $cond: [{ $ne: ["$contentType", "rich"] }, 1, 0]
-            }
+              $cond: [{ $ne: ["$contentType", "rich"] }, 1, 0],
+            },
           },
         },
       },
@@ -349,9 +357,10 @@ export class MessageService {
     return stats.length > 0
       ? {
           ...stats[0],
-          richContentPercentage: stats[0].totalMessages > 0
-            ? (stats[0].richMessages / stats[0].totalMessages) * 100
-            : 0
+          richContentPercentage:
+            stats[0].totalMessages > 0
+              ? (stats[0].richMessages / stats[0].totalMessages) * 100
+              : 0,
         }
       : {
           totalMessages: 0,
@@ -454,6 +463,101 @@ export class MessageService {
   async calculateMessageSize(attachmentIds: string[]): Promise<number> {
     if (!attachmentIds.length) return 0;
     return attachmentService.calculateMessageAttachmentSize(attachmentIds);
+  }
+
+  async editMessage(data: {
+    messageId: string;
+    userId: string;
+    content: string;
+    richContent?: any;
+    contentType?: string;
+    contextType: "direct_message" | "channel";
+    contextId: string;
+  }) {
+    const {
+      messageId,
+      userId,
+      content,
+      richContent,
+      contentType,
+      contextType,
+      contextId,
+    } = data;
+
+    // Get the message first
+    const message = await messageRepository.findById(messageId);
+    if (!message) {
+      throw new NotFoundError("message");
+    }
+
+    // Check if user is the sender
+    if (message.senderId.toString() !== userId) {
+      throw new ForbiddenError("You can only edit your own messages");
+    }
+
+    // Check if message is within edit time limit
+    if (!validateEditTimeLimit(message.createdAt)) {
+      throw new ForbiddenError(
+        `Messages can only be edited within ${
+          EDIT_TIME_LIMIT / (1000 * 60 * 60)
+        } hours of sending`,
+      );
+    }
+
+    // Validate that the message belongs to the correct context
+    if (
+      contextType === "direct_message" &&
+      message.directMessageId?.toString() !== contextId
+    ) {
+      throw new ForbiddenError(
+        "Message does not belong to this direct message",
+      );
+    }
+    if (
+      contextType === "channel" &&
+      message.channelId?.toString() !== contextId
+    ) {
+      throw new ForbiddenError("Message does not belong to this channel");
+    }
+
+    // Validate rich content if provided
+    if (richContent) {
+      this.validateRichContent(richContent);
+    }
+
+    // Determine final content type
+    let finalContentType = contentType;
+    if (!finalContentType) {
+      finalContentType = richContent ? ContentType.RICH : ContentType.TEXT;
+    }
+
+    // Update the message
+    const updateData = {
+      content,
+      richContent,
+      contentType: finalContentType,
+      editedAt: new Date(),
+      isEdited: true,
+    };
+
+    const updatedMessage = await messageRepository.updateMessage(
+      messageId,
+      updateData,
+    );
+    if (!updatedMessage) {
+      throw new NotFoundError("message");
+    }
+
+    logger.info("Message edited successfully", {
+      messageId,
+      userId,
+      contextType,
+      contextId,
+      contentType: finalContentType,
+      hasRichContent: !!richContent,
+    });
+
+    return updatedMessage;
   }
 }
 

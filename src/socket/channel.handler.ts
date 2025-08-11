@@ -376,4 +376,53 @@ export const registerChannelHandlers = (
       }
     }
   });
+
+  socket.on("edit_channel_message", async (data, callback) => {
+    try {
+      logger.event(socket.id, "edit_channel_message", data);
+      const { channelId, messageId, content, richContent, contentType } = data;
+
+      if (!channelId || !messageId || !content) {
+        throw new ValidationError(
+          "channelId, messageId, and content are required",
+        );
+      }
+
+      const result = await channelService.editMessage({
+        channelId,
+        messageId,
+        userId,
+        content,
+        richContent,
+        contentType,
+      });
+
+      // Emit to the channel room
+      const channelRoom = `channel:${channelId}`;
+      io.to(channelRoom).emit("message_updated", {
+        message: result.message,
+        channelId,
+      });
+
+      // Send confirmation to sender
+      if (typeof callback === "function") {
+        callback({
+          success: true,
+          message: result.message,
+        });
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(socket.id, error);
+
+        if (typeof callback === "function") {
+          errorHandler.handleSocketError(error, socket);
+          callback({
+            success: false,
+            error: error.message || "Failed to edit message",
+          });
+        }
+      }
+    }
+  });
 };

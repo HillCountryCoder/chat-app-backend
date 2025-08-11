@@ -268,6 +268,61 @@ export class MessageRepository extends BaseRepository<
 
     return findQuery.lean();
   }
+
+  async updateMessage(
+    messageId: string,
+    updateData: {
+      content?: string;
+      richContent?: any;
+      contentType?: string;
+      editedAt?: Date;
+      isEdited?: boolean;
+    },
+  ) {
+    const updated = await this.model
+      .findByIdAndUpdate(messageId, { $set: updateData }, { new: true })
+      .populate({
+        path: "senderId",
+        select: "_id username displayName avatarUrl",
+        model: "User",
+      })
+      .lean();
+
+    if (!updated) {
+      return null;
+    }
+
+    // Type assertion to help TypeScript understand the structure
+    const populatedMessage = updated as any;
+
+    // Transform the result to match MessageInterface
+    const result = {
+      _id: populatedMessage._id,
+      messageId: populatedMessage._id.toString(),
+      senderId: populatedMessage.senderId._id,
+      sender: populatedMessage.senderId,
+      channelId: populatedMessage.channelId,
+      directMessageId: populatedMessage.directMessageId,
+      threadId: populatedMessage.threadId,
+      isThreadStarter: populatedMessage.isThreadStarter || false,
+      content: populatedMessage.content,
+      richContent: populatedMessage.richContent,
+      contentType: populatedMessage.contentType,
+      mentions: populatedMessage.mentions || [],
+      reactions: populatedMessage.reactions || [],
+      attachments: populatedMessage.attachments || [],
+      replyToId: populatedMessage.replyToId,
+      hasMedia: populatedMessage.hasMedia || false,
+      totalAttachmentSize: populatedMessage.totalAttachmentSize,
+      createdAt: populatedMessage.createdAt,
+      editedAt: populatedMessage.editedAt,
+      updatedAt: populatedMessage.updatedAt,
+      isEdited: populatedMessage.isEdited || false,
+      isPinned: populatedMessage.isPinned || false,
+    };
+
+    return result;
+  }
 }
 
 export const messageRepository = MessageRepository.getInstance();

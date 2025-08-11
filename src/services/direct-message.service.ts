@@ -323,6 +323,59 @@ export class DirectMessageService {
 
     return await messageService.getRichContentStatistics(directMessageId, "dm");
   }
+
+  async editMessage(data: {
+    directMessageId: string;
+    messageId: string;
+    userId: string;
+    content: string;
+    richContent?: PlateValue;
+    contentType?: ContentType;
+  }) {
+    const {
+      directMessageId,
+      messageId,
+      userId,
+      content,
+      richContent,
+      contentType,
+    } = data;
+
+    logger.debug("Editing direct message", {
+      directMessageId,
+      messageId,
+      userId,
+      hasRichContent: !!richContent,
+      contentType,
+    });
+
+    // Verify user has access to this direct message
+    await this.getDirectMessageById(directMessageId, userId);
+
+    // Edit the message using messageService
+    const updatedMessage = await messageService.editMessage({
+      messageId,
+      userId,
+      content,
+      richContent,
+      contentType,
+      contextType: "direct_message",
+      contextId: directMessageId,
+    });
+
+    logger.info("Direct message edited successfully", {
+      messageId,
+      directMessageId,
+      userId,
+      contentType: updatedMessage.contentType,
+      hasRichContent: !!updatedMessage.richContent,
+    });
+
+    return {
+      message: updatedMessage,
+      success: true,
+    };
+  }
 }
 
 export const directMessageService = DirectMessageService.getInstance();
