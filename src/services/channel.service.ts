@@ -382,10 +382,12 @@ export class ChannelService {
     senderId: string;
     channelId: string;
     content: string;
+    richContent?: PlateValue; // Add this
+    contentType?: ContentType; // Add this
     replyToId?: string;
     attachmentIds?: string[];
   }) {
-    const { attachmentIds = [] } = data;
+    const { attachmentIds = [], richContent, contentType } = data; // Add richContent and contentType
 
     if (attachmentIds.length > 0) {
       await this.validateMessageWithAttachments(attachmentIds, data.senderId);
@@ -394,13 +396,20 @@ export class ChannelService {
     // Verify channel exists and user is a member
     await this.getChannelById(data.channelId, data.senderId);
 
+    let finalContentType = contentType;
+    if (!finalContentType) {
+      finalContentType = richContent ? ContentType.RICH : ContentType.TEXT;
+    }
+
     // Phase 3: Use messageService for attachment support
     const message =
-      attachmentIds.length > 0
+      attachmentIds.length > 0 || richContent
         ? await messageService.createMessageWithAttachments({
             senderId: data.senderId,
             channelId: data.channelId,
             content: data.content,
+            richContent,
+            contentType: finalContentType,
             replyToId: data.replyToId,
             attachmentIds,
           })
@@ -409,7 +418,7 @@ export class ChannelService {
             senderId: data.senderId,
             channelId: data.channelId,
             content: data.content,
-            contentType: ContentType.TEXT,
+            contentType: finalContentType,
             replyToId: data.replyToId,
           });
 

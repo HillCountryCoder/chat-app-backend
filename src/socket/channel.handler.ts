@@ -6,19 +6,68 @@ import { ValidationError } from "../common/errors";
 import { z } from "zod";
 import { unreadMessagesService } from "../services/unread-messages.service";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../constants";
+import { ContentType } from "../models";
 
 const logger = createSocketLogger(createLogger("channel-socket"));
 const errorHandler = new ErrorHandler(createLogger("socket-error-handler"));
-
-const sendMessageSchema = z.object({
-  content: z.string().min(1).max(2000),
-  channelId: z.string(),
-  attachmentIds: z
-    .array(z.string())
-    .max(MAX_ATTACHMENTS_PER_MESSAGE)
-    .optional(),
-  replyToId: z.string().optional(),
-});
+const plateValueSchema = z.array(
+  z
+    .object({
+      id: z.string().optional(),
+      type: z.string(),
+      children: z.array(
+        z
+          .object({
+            text: z.string(),
+          })
+          .catchall(z.any()),
+      ),
+    })
+    .catchall(z.any()),
+);
+const sendMessageSchema = z
+  .object({
+    content: z.string().min(1).max(2000),
+    richContent: plateValueSchema.optional(),
+    contentType: z.nativeEnum(ContentType).optional(),
+    channelId: z.string(),
+    attachmentIds: z
+      .array(z.string())
+      .max(MAX_ATTACHMENTS_PER_MESSAGE)
+      .optional(),
+    replyToId: z.string().optional(),
+  })
+  .refine((data) => data.channelId, {
+    message: "channelId is required",
+  })
+  .refine(
+    (data) => {
+      if (
+        data.richContent &&
+        data.contentType &&
+        data.contentType !== ContentType.RICH
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Content type must be 'rich' when rich content is provided",
+      path: ["contentType"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.contentType === ContentType.RICH && !data.richContent) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Rich content must be provided when content type is 'rich'",
+      path: ["richContent"],
+    },
+  );
 
 const sendThreadMessageSchema = z.object({
   content: z.string().min(1).max(2000),
@@ -62,9 +111,9 @@ export const registerChannelHandlers = (
       logger.event(socket.id, "send_channel_message", {
         ...data,
         attachmentCount: data.attachmentIds?.length || 0,
+        hasRichContent: !!data.richContent,
       });
 
-      // Validate the data
       let validatedData;
       try {
         validatedData = sendMessageSchema.parse(data);
@@ -76,11 +125,22 @@ export const registerChannelHandlers = (
         }
         throw error;
       }
-      // Process the message
+
+      // Determine content type if not explicitly provided
+      let contentType = validatedData.contentType;
+      if (!contentType) {
+        contentType = validatedData.richContent
+          ? ContentType.RICH
+          : ContentType.TEXT;
+      }
+
+      // Process the message with rich content support
       const result = await channelService.sendMessage({
         senderId: userId,
         channelId: validatedData.channelId,
         content: validatedData.content,
+        richContent: validatedData.richContent,
+        contentType,
         attachmentIds: validatedData.attachmentIds || [],
         replyToId: validatedData.replyToId,
       });

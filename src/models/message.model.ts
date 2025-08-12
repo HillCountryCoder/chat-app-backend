@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // models/message.model.ts (Updated with Rich Content Support)
 import mongoose, { Document, Schema } from "mongoose";
 
@@ -99,25 +100,26 @@ const messageSchema = new Schema<MessageInterface>(
     },
     content: { type: String, required: true },
     // Add rich content field - stores Plate.js Value as flexible object
-    richContent: { 
+    richContent: {
       type: Schema.Types.Mixed,
       validate: {
-        validator: function(value: any) {
+        validator: function (value: any) {
           // Only validate if richContent is provided
           if (value === null || value === undefined) return true;
-          
+
           // Must be an array (Plate.js Value format)
           if (!Array.isArray(value)) return false;
-          
+
           // Each item should be a node with children
-          return value.every(node => 
-            typeof node === 'object' && 
-            node !== null && 
-            Array.isArray(node.children)
+          return value.every(
+            (node) =>
+              typeof node === "object" &&
+              node !== null &&
+              Array.isArray(node.children),
           );
         },
-        message: 'Rich content must be a valid Plate.js Value format'
-      }
+        message: "Rich content must be a valid Plate.js Value format",
+      },
     },
     contentType: {
       type: String,
@@ -181,7 +183,7 @@ messageSchema.pre(["find", "findOne", "findOneAndUpdate"], function () {
 messageSchema.pre("save", function (next) {
   // Set hasMedia based on attachments
   this.hasMedia = this.attachments && this.attachments.length > 0;
-  
+
   if (this.hasMedia) {
     this.totalAttachmentSize = undefined;
   }

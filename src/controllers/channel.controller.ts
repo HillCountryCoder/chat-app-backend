@@ -28,17 +28,6 @@ const getMessagesSchema = z.object({
   before: z.string().optional(),
   after: z.string().optional(),
 });
-
-const sendMessageSchema = z.object({
-  content: z.string().min(1).max(2000),
-});
-
-const createThreadSchema = z.object({
-  messageId: z.string(),
-  content: z.string().min(1).max(2000),
-  title: z.string().max(100).optional(),
-});
-
 const richContentSchema = z
   .array(
     z
@@ -50,12 +39,54 @@ const richContentSchema = z
             .object({
               text: z.string().optional(),
             })
-            .passthrough(), // Allow additional properties for formatting
+            .passthrough(),
         ),
       })
-      .passthrough(), // Allow additional properties for node attributes
+      .passthrough(),
   )
   .optional();
+const sendMessageSchema = z
+  .object({
+    content: z.string().min(1).max(2000),
+    richContent: richContentSchema,
+    contentType: z.nativeEnum(ContentType).optional(),
+    attachmentIds: z.array(z.string()).optional(),
+    replyToId: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (
+        data.richContent &&
+        data.contentType &&
+        data.contentType !== ContentType.RICH
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Content type must be 'rich' when rich content is provided",
+      path: ["contentType"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.contentType === ContentType.RICH && !data.richContent) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Rich content must be provided when content type is 'rich'",
+      path: ["richContent"],
+    },
+  );
+
+const createThreadSchema = z.object({
+  messageId: z.string(),
+  content: z.string().min(1).max(2000),
+  title: z.string().max(100).optional(),
+});
 
 const editMessageSchema = z
   .object({
@@ -299,10 +330,31 @@ export class ChannelController {
 
       const userId = req.user._id.toString();
 
+      // Determine content type if not explicitly provided
+      let contentType = validatedData.contentType;
+      if (!contentType) {
+        contentType = validatedData.richContent
+          ? ContentType.RICH
+          : ContentType.TEXT;
+      }
+
+      // Process rich content to ensure all text fields are strings
+      const processedRichContent = validatedData.richContent?.map((node) => ({
+        ...node,
+        children: node.children.map((child) => ({
+          ...child,
+          text: child.text || "",
+        })),
+      }));
+
       const result = await channelService.sendMessage({
         senderId: userId,
         channelId: id,
         content: validatedData.content,
+        richContent: processedRichContent,
+        contentType,
+        attachmentIds: validatedData.attachmentIds,
+        replyToId: validatedData.replyToId,
       });
 
       res.status(201).json(result);
