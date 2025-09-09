@@ -6,6 +6,7 @@ import {
   refreshTokenSchema,
 } from "../services/validation/auth.validation";
 import { authMiddleware, validateRequest } from "../common/middlewares";
+import { refreshTokenLimiter } from "../services";
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.post(
 
 router.post(
   "/refresh",
+  refreshTokenLimiter,
   validateRequest(refreshTokenSchema),
   AuthController.refreshToken,
 );

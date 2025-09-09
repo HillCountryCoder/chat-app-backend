@@ -13,7 +13,6 @@ import {
   registerPresenceHandlers,
   setupPresenceBroadcasting,
 } from "../presence/socket/presence.handler";
-import { PresenceManager } from "../presence/presence-manager";
 import { ServiceLocator } from "../common/service-locator";
 
 const logger = createLogger("socket-server");
@@ -31,6 +30,23 @@ export const initializeSocketServer = (server: HttpServer) => {
       credentials: true,
     },
     path: process.env.SOCKET_PATH || "/socket.io",
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      const allowedOrigins = [
+        "https://chat-app-frontend-one-coral.vercel.app",
+        "http://localhost:3000",
+        "https://www.whatnextplease.com",
+		"https://staging.whatnextplease.com"
+      ];
+	  if (!origin) {
+		return callback(null, true);
+	  } 
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback("Not allowed by CORS", false);
+      }
+    },
   });
 
   socketServerInstance = io;
