@@ -1,5 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import mongoose from "mongoose";
+import dotenv from "dotenv";
+import path from "path";
 import { Tenant } from "../models/tenant.model";
+
+// Load environment variables FIRST
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 /**
  * Migration 001: Create tenants collection
@@ -7,11 +13,10 @@ import { Tenant } from "../models/tenant.model";
 export async function migration_001_create_tenants_collection() {
   console.log("🚀 Running migration 001: Create tenants collection...");
 
-  // The collection is created automatically when first document is inserted
-  // Just verify it exists
   if (!mongoose.connection.db) {
     throw new Error("Database connection not established");
   }
+
   const collections = await mongoose.connection.db.listCollections().toArray();
   const tenantCollectionExists = collections.some((c) => c.name === "tenants");
 
@@ -21,6 +26,74 @@ export async function migration_001_create_tenants_collection() {
   } else {
     console.log("✅ Tenants collection already exists");
   }
+}
+
+/**
+ * Migration 001b: Drop old tenant indexes that might conflict
+ */
+export async function migration_001b_drop_old_tenant_indexes() {
+  console.log("🚀 Running migration 001b: Dropping old tenant indexes...");
+
+  if (!mongoose.connection.db) {
+    throw new Error("Database connection not established");
+  }
+
+  const collections = await mongoose.connection.db.listCollections().toArray();
+  const usersExists = collections.some((c) => c.name === "users");
+
+  if (!usersExists) {
+    console.log(
+      "ℹ️  Users collection doesn't exist, skipping index cleanup...",
+    );
+    return;
+  }
+
+  // List of tenant indexes that might exist and cause conflicts
+  const indexesToDrop = [
+    "tenant_email_unique",
+    "tenant_username_unique",
+    "tenant_external_id_unique",
+    "tenant_active_users",
+  ];
+
+  for (const indexName of indexesToDrop) {
+    try {
+      await mongoose.connection.db.collection("users").dropIndex(indexName);
+      console.log(`✅ Dropped index: ${indexName}`);
+    } catch (error: any) {
+      if (error.code === 27 || error.codeName === "IndexNotFound") {
+        console.log(`ℹ️  Index ${indexName} doesn't exist, skipping...`);
+      } else {
+        console.log(`⚠️  Could not drop ${indexName}:`, error.message);
+      }
+    }
+  }
+
+  // Drop channel tenant indexes
+  const channelsExists = collections.some((c) => c.name === "channels");
+  if (channelsExists) {
+    const channelIndexes = [
+      "tenant_name_idx",
+      "tenant_archived_idx",
+      "tenant_creator_idx",
+    ];
+    for (const indexName of channelIndexes) {
+      try {
+        await mongoose.connection.db
+          .collection("channels")
+          .dropIndex(indexName);
+        console.log(`✅ Dropped channel index: ${indexName}`);
+      } catch (error: any) {
+        if (error.code === 27 || error.codeName === "IndexNotFound") {
+          console.log(
+            `ℹ️  Channel index ${indexName} doesn't exist, skipping...`,
+          );
+        }
+      }
+    }
+  }
+
+  console.log("✅ Completed index cleanup");
 }
 
 /**
@@ -37,53 +110,71 @@ export async function migration_002_add_tenantId_fields() {
 
   const DEFAULT_TENANT_ID = "default";
 
-  // Update Users
-  const usersUpdated = await mongoose.connection.db
-    .collection("users")
-    .updateMany(
-      { tenantId: { $exists: false } },
-      { $set: { tenantId: DEFAULT_TENANT_ID } },
-    );
-  console.log(`✅ Updated ${usersUpdated.modifiedCount} users with tenantId`);
+  // Helper function to check if collection exists
+  const collectionExists = async (name: string): Promise<boolean> => {
+    const collections = await mongoose.connection
+      .db!.listCollections()
+      .toArray();
+    return collections.some((c) => c.name === name);
+  };
 
-  // Update Channels
-  const channelsUpdated = await mongoose.connection.db
-    .collection("channels")
-    .updateMany(
-      { tenantId: { $exists: false } },
-      { $set: { tenantId: DEFAULT_TENANT_ID } },
-    );
-  console.log(
-    `✅ Updated ${channelsUpdated.modifiedCount} channels with tenantId`,
-  );
-
-  // Update Messages
-  const messagesUpdated = await mongoose.connection.db
-    .collection("messages")
-    .updateMany(
-      { tenantId: { $exists: false } },
-      { $set: { tenantId: DEFAULT_TENANT_ID } },
-    );
-  console.log(
-    `✅ Updated ${messagesUpdated.modifiedCount} messages with tenantId`,
-  );
-
-  // Update DirectMessages if exists
-  const dmCollectionExists = (
-    await mongoose.connection.db.listCollections().toArray()
-  ).some((c) => c.name === "directmessages");
-
-  if (dmCollectionExists) {
-    const dmUpdated = await mongoose.connection.db
-      .collection("directmessages")
-      .updateMany(
-        { tenantId: { $exists: false } },
-        { $set: { tenantId: DEFAULT_TENANT_ID } },
+  // Helper function to add tenantId to a collection
+  const addTenantIdToCollection = async (
+    collectionName: string,
+    displayName: string,
+  ) => {
+    if (await collectionExists(collectionName)) {
+      const result = await mongoose.connection
+        .db!.collection(collectionName)
+        .updateMany(
+          { tenantId: { $exists: false } },
+          { $set: { tenantId: DEFAULT_TENANT_ID } },
+        );
+      console.log(
+        `✅ Updated ${result.modifiedCount} ${displayName} with tenantId`,
       );
-    console.log(
-      `✅ Updated ${dmUpdated.modifiedCount} direct messages with tenantId`,
-    );
-  }
+      return result.modifiedCount;
+    } else {
+      console.log(`ℹ️  ${displayName} collection doesn't exist, skipping...`);
+      return 0;
+    }
+  };
+
+  // Update all collections that have the tenant plugin
+  let totalUpdated = 0;
+
+  // Core collections
+  totalUpdated += await addTenantIdToCollection("users", "users");
+  totalUpdated += await addTenantIdToCollection("channels", "channels");
+  totalUpdated += await addTenantIdToCollection("messages", "messages");
+  totalUpdated += await addTenantIdToCollection(
+    "directmessages",
+    "direct messages",
+  );
+
+  // Additional collections
+  totalUpdated += await addTenantIdToCollection(
+    "channelmembers",
+    "channel members",
+  );
+  totalUpdated += await addTenantIdToCollection("threads", "threads");
+  totalUpdated += await addTenantIdToCollection("attachments", "attachments");
+  totalUpdated += await addTenantIdToCollection(
+    "refreshtokens",
+    "refresh tokens",
+  );
+
+  // Presence collections
+  totalUpdated += await addTenantIdToCollection(
+    "presencehistories",
+    "presence histories",
+  );
+  totalUpdated += await addTenantIdToCollection(
+    "userconnections",
+    "user connections",
+  );
+
+  console.log(`\n📊 Total documents updated: ${totalUpdated}`);
 }
 
 /**
@@ -121,99 +212,24 @@ export async function migration_003_create_default_tenant() {
 }
 
 /**
- * Migration 004: Create indexes for tenant isolation
+ * Migration 004: Add new fields to users (non-breaking)
  */
-export async function migration_004_create_tenant_indexes() {
-  console.log("🚀 Running migration 004: Create tenant-based indexes...");
+export async function migration_004_add_new_user_fields() {
+  console.log("🚀 Running migration 004: Add new fields to users...");
+
   if (!mongoose.connection.db) {
     throw new Error("Database connection not established");
   }
-  // Users indexes
-  await mongoose.connection.db
-    .collection("users")
-    .createIndex(
-      { tenantId: 1, email: 1 },
-      { unique: true, name: "tenant_email_unique" },
-    );
 
-  await mongoose.connection.db
-    .collection("users")
-    .createIndex(
-      { tenantId: 1, username: 1 },
-      { unique: true, name: "tenant_username_unique" },
-    );
+  // Check if users collection exists
+  const collections = await mongoose.connection.db.listCollections().toArray();
+  const usersExists = collections.some((c) => c.name === "users");
 
-  await mongoose.connection.db
-    .collection("users")
-    .createIndex(
-      { tenantId: 1, externalId: 1, externalSystem: 1 },
-      { unique: true, sparse: true, name: "tenant_external_id_unique" },
-    );
-
-  await mongoose.connection.db
-    .collection("users")
-    .createIndex({ tenantId: 1, isActive: 1 }, { name: "tenant_active_users" });
-
-  console.log("✅ Created user indexes");
-
-  // Channels indexes
-  await mongoose.connection.db
-    .collection("channels")
-    .createIndex(
-      { tenantId: 1, name: 1 },
-      { unique: true, name: "tenant_channel_name_unique" },
-    );
-
-  await mongoose.connection.db
-    .collection("channels")
-    .createIndex(
-      { tenantId: 1, isPrivate: 1 },
-      { name: "tenant_channel_visibility" },
-    );
-
-  console.log("✅ Created channel indexes");
-
-  // Messages indexes
-  await mongoose.connection.db
-    .collection("messages")
-    .createIndex(
-      { tenantId: 1, channelId: 1, createdAt: -1 },
-      { name: "tenant_channel_messages" },
-    );
-
-  await mongoose.connection.db
-    .collection("messages")
-    .createIndex(
-      { tenantId: 1, senderId: 1, createdAt: -1 },
-      { name: "tenant_user_messages" },
-    );
-
-  console.log("✅ Created message indexes");
-
-  // Tenants indexes
-  await mongoose.connection.db
-    .collection("tenants")
-    .createIndex({ tenantId: 1 }, { unique: true, name: "tenant_id_unique" });
-
-  await mongoose.connection.db
-    .collection("tenants")
-    .createIndex({ domain: 1 }, { unique: true, name: "tenant_domain_unique" });
-
-  await mongoose.connection.db
-    .collection("tenants")
-    .createIndex({ status: 1, isActive: 1 }, { name: "tenant_status" });
-
-  console.log("✅ Created tenant indexes");
-}
-
-/**
- * Migration 005: Add new fields to users (non-breaking)
- */
-export async function migration_005_add_new_user_fields() {
-  console.log("🚀 Running migration 005: Add new fields to users...");
-  if (!mongoose.connection.db) {
-    throw new Error("Database connection not established");
+  if (!usersExists) {
+    console.log("ℹ️  Users collection doesn't exist yet, skipping...");
+    return;
   }
+
   // Add new fields with safe defaults
   const result = await mongoose.connection.db.collection("users").updateMany(
     {
@@ -228,8 +244,8 @@ export async function migration_005_add_new_user_fields() {
       $set: {
         externalId: null,
         externalSystem: null,
-        emailVerified: false, // Will be true for existing users who've been using the system
-        isActive: true, // Assume existing users are active
+        emailVerified: false,
+        isActive: true,
       },
     },
   );
@@ -262,12 +278,22 @@ export async function runAllMigrations() {
 
   try {
     await migration_001_create_tenants_collection();
+    await migration_001b_drop_old_tenant_indexes(); // NEW: Drop conflicting indexes first
     await migration_002_add_tenantId_fields();
     await migration_003_create_default_tenant();
-    await migration_004_create_tenant_indexes();
-    await migration_005_add_new_user_fields();
+    await migration_004_add_new_user_fields();
 
     console.log("\n✅ All migrations completed successfully!");
+    console.log("\n📝 Next steps:");
+    console.log(
+      "1. Restart your server to let Mongoose create indexes from models",
+    );
+    console.log("2. Verify that all collections have tenantId field");
+    console.log("3. Test that tenant isolation is working");
+    console.log("\n💡 To verify migration:");
+    console.log("   db.users.findOne() - should have tenantId: 'default'");
+    console.log("   db.channels.findOne() - should have tenantId: 'default'");
+    console.log("   db.tenants.find() - should show default tenant");
   } catch (error) {
     console.error("❌ Migration failed:", error);
     throw error;
@@ -279,56 +305,90 @@ export async function runAllMigrations() {
  */
 export async function rollbackMigrations() {
   console.log("⚠️  Rolling back migrations...");
+  console.log("⚠️  WARNING: This will remove all tenant-related data!");
+
   if (!mongoose.connection.db) {
     throw new Error("Database connection not established");
   }
-  // Drop tenant-specific indexes
-  try {
-    await mongoose.connection.db
-      .collection("users")
-      .dropIndex("tenant_email_unique");
-    await mongoose.connection.db
-      .collection("users")
-      .dropIndex("tenant_username_unique");
-    await mongoose.connection.db
-      .collection("users")
-      .dropIndex("tenant_external_id_unique");
-  } catch (err) {
-    console.log("Some indexes may not exist, continuing...", err);
+
+  // Helper function to check if collection exists
+  const collectionExists = async (name: string): Promise<boolean> => {
+    const collections = await mongoose.connection
+      .db!.listCollections()
+      .toArray();
+    return collections.some((c) => c.name === name);
+  };
+
+  // Helper function to remove tenantId from a collection
+  const removeTenantIdFromCollection = async (
+    collectionName: string,
+    displayName: string,
+  ) => {
+    if (await collectionExists(collectionName)) {
+      await mongoose.connection
+        .db!.collection(collectionName)
+        .updateMany({}, { $unset: { tenantId: "" } });
+      console.log(`✅ Removed tenantId from ${displayName}`);
+    }
+  };
+
+  // Remove tenantId from users and new fields
+  if (await collectionExists("users")) {
+    await mongoose.connection.db!.collection("users").updateMany(
+      {},
+      {
+        $unset: {
+          tenantId: "",
+          externalId: "",
+          externalSystem: "",
+          emailVerified: "",
+          isActive: "",
+        },
+      },
+    );
+    console.log("✅ Removed tenant and new fields from users");
   }
 
-  // Remove tenantId fields
-  await mongoose.connection.db.collection("users").updateMany(
-    {},
-    {
-      $unset: {
-        tenantId: "",
-        externalId: "",
-        externalSystem: "",
-        externalUserType: "",
-      },
-    },
-  );
+  // Remove tenantId from other collections
+  await removeTenantIdFromCollection("channels", "channels");
+  await removeTenantIdFromCollection("messages", "messages");
+  await removeTenantIdFromCollection("directmessages", "direct messages");
+  await removeTenantIdFromCollection("channelmembers", "channel members");
+  await removeTenantIdFromCollection("threads", "threads");
+  await removeTenantIdFromCollection("attachments", "attachments");
+  await removeTenantIdFromCollection("refreshtokens", "refresh tokens");
+  await removeTenantIdFromCollection("presencehistories", "presence histories");
+  await removeTenantIdFromCollection("userconnections", "user connections");
 
-  await mongoose.connection.db
-    .collection("channels")
-    .updateMany({}, { $unset: { tenantId: "" } });
+  // Delete tenants collection
+  if (await collectionExists("tenants")) {
+    await mongoose.connection.db!.collection("tenants").drop();
+    console.log("✅ Dropped tenants collection");
+  }
 
-  await mongoose.connection.db
-    .collection("messages")
-    .updateMany({}, { $unset: { tenantId: "" } });
-
-  console.log("✅ Rollback complete");
+  console.log("\n✅ Rollback complete");
+  console.log("⚠️  Note: You may need to manually drop tenant-related indexes");
 }
 
 // CLI Runner
 if (require.main === module) {
   const command = process.argv[2];
 
+  // Check if MONGODB_URI is set
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    console.error("❌ Error: MONGODB_URI environment variable not set!");
+    console.error("Please check your .env file.");
+    process.exit(1);
+  }
+
+  console.log("📦 Connecting to MongoDB...");
+  console.log(`📍 URI: ${mongoUri.replace(/:[^:]*@/, ":****@")}`); // Hide password in logs
+
   mongoose
-    .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/chat-app")
+    .connect(mongoUri)
     .then(async () => {
-      console.log("📦 Connected to MongoDB\n");
+      console.log("✅ Connected to MongoDB\n");
 
       if (command === "rollback") {
         await rollbackMigrations();
@@ -337,10 +397,15 @@ if (require.main === module) {
       }
 
       await mongoose.disconnect();
+      console.log("\n📦 Disconnected from MongoDB");
       process.exit(0);
     })
     .catch((error) => {
       console.error("❌ Migration error:", error);
+      console.error("\n💡 Troubleshooting:");
+      console.error("1. Check if MongoDB is running at the specified URI");
+      console.error("2. Verify your credentials in .env file");
+      console.error("3. Ensure network connectivity to the MongoDB server");
       process.exit(1);
     });
 }

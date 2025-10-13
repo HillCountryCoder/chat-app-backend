@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from "mongoose";
+import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export interface RefreshTokenInterface extends Document {
   token: string;
@@ -68,6 +69,35 @@ refreshTokenSchema.index({
   ipAddress: 1,
   expiresAt: 1,
 });
+
+// Indexes for multi-tenancy if needed in future
+refreshTokenSchema.index(
+  { tenantId: 1, userId: 1, createdAt: -1 },
+  { name: "tenant_user_createdAt_idx" },
+);
+refreshTokenSchema.index(
+  { tenantId: 1, userId: 1, expiresAt: 1 },
+  { name: "tenant_user_expiresAt_idx" },
+);
+refreshTokenSchema.index(
+  { tenantId: 1, userId: 1, userAgent: 1, ipAddress: 1 },
+  { name: "tenant_user_device_idx" },
+);
+refreshTokenSchema.index(
+  { tenantId: 1, userId: 1, lastUsed: -1 },
+  { name: "tenant_user_lastUsed_idx" },
+);
+refreshTokenSchema.index(
+  { tenantId: 1, expiresAt: 1 },
+  { name: "tenant_expiresAt_idx" },
+);
+refreshTokenSchema.index(
+  { tenantId: 1, userId: 1, userAgent: 1, ipAddress: 1, expiresAt: 1 },
+  { name: "tenant_user_device_expiresAt_idx" },
+);
+
+// Plugin for tenant isolation if needed in future
+refreshTokenSchema.plugin(tenantIsolationPlugin);
 export const RefreshToken = model<RefreshTokenInterface>(
   "RefreshToken",
   refreshTokenSchema,

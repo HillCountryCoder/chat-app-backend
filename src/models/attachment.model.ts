@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export interface S3Metadata {
   bucket: string;
@@ -147,7 +148,30 @@ attachmentSchema.index({ type: 1 });
 attachmentSchema.index({ "metadata.s3.key": 1 }, { unique: true });
 attachmentSchema.index({ "metadata.s3.encrypted": 1 });
 attachmentSchema.index({ uploadedAt: -1 });
-
+// New Indexes for multi-tenancy
+attachmentSchema.index(
+  { tenantId: 1, uploadedBy: 1 },
+  { name: "tenant_uploadedBy_idx" },
+);
+attachmentSchema.index(
+  { tenantId: 1, status: 1 },
+  { name: "tenant_status_idx" },
+);
+attachmentSchema.index({ tenantId: 1, type: 1 }, { name: "tenant_type_idx" });
+attachmentSchema.index(
+  { tenantId: 1, uploadedAt: -1 },
+  { name: "tenant_uploadedAt_idx" },
+);
+attachmentSchema.index(
+  { tenantId: 1, "metadata.s3.key": 1 },
+  { unique: true, name: "tenant_s3Key_idx" },
+);
+attachmentSchema.index(
+  { tenantId: 1, "metadata.s3.encrypted": 1 },
+  { name: "tenant_s3Encrypted_idx" },
+);
+// Apply tenant isolation plugin
+attachmentSchema.plugin(tenantIsolationPlugin);
 export const Attachment = mongoose.model<AttachmentInterface>(
   "Attachment",
   attachmentSchema,

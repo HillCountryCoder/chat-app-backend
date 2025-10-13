@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export interface Thread extends Document {
   channelId: mongoose.Types.ObjectId;
@@ -45,5 +46,26 @@ threadSchema.index({ channelId: 1 });
 threadSchema.index({ parentMessageId: 1 }, { unique: true });
 threadSchema.index({ participantIds: 1 });
 threadSchema.index({ lastActivity: -1 });
+
+// New Indexes for multi-tenancy
+threadSchema.index(
+  { tenantId: 1, channelId: 1 },
+  { name: "tenant_channel_idx" },
+);
+threadSchema.index(
+  { tenantId: 1, parentMessageId: 1 },
+  { name: "tenant_parentMessage_idx" },
+);
+threadSchema.index(
+  { tenantId: 1, participantIds: 1 },
+  { name: "tenant_participant_idx" },
+);
+threadSchema.index(
+  { tenantId: 1, lastActivity: -1 },
+  { name: "tenant_lastActivity_idx" },
+);
+
+// Plugin to enforce tenant isolation if needed in future
+threadSchema.plugin(tenantIsolationPlugin);
 
 export const Thread = mongoose.model<Thread>("Thread", threadSchema);

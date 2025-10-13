@@ -1,5 +1,6 @@
 // src/models/channel-member.model.ts
 import mongoose, { Document, Schema } from "mongoose";
+import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export enum NotificationPreference {
   ALL = "all",
@@ -81,6 +82,24 @@ channelMemberSchema.index({ channelId: 1, userId: 1 }, { unique: true });
 // Indexes for faster lookups
 channelMemberSchema.index({ channelId: 1 });
 channelMemberSchema.index({ userId: 1 });
+
+// New Indexes for multi-tenancy
+channelMemberSchema.index(
+  { tenantId: 1, channelId: 1 },
+  { name: "tenant_channel_idx" },
+);
+channelMemberSchema.index(
+  { tenantId: 1, userId: 1 },
+  { name: "tenant_user_idx" },
+);
+
+channelMemberSchema.index(
+  { tenantId: 1, channelId: 1, userId: 1 },
+  { unique: true, name: "tenant_channel_user_idx" },
+);
+
+// Apply tenant isolation plugin
+channelMemberSchema.plugin(tenantIsolationPlugin);
 
 export const ChannelMember = mongoose.model<ChannelMemberInterface>(
   "ChannelMember",

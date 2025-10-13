@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export enum ChannelType {
   TEXT = "text",
@@ -62,7 +63,20 @@ const channelSchema = new Schema<ChannelInterface>(
 channelSchema.index({ creatorId: 1 });
 channelSchema.index({ isArchived: 1 });
 channelSchema.index({ name: 1 }, { unique: true });
-
+// New Indexes for multi-tenancy
+channelSchema.index(
+  { tenantId: 1, name: 1 },
+  { unique: true, name: "tenant_name_idx" },
+);
+channelSchema.index(
+  { tenantId: 1, isArchived: 1 },
+  { name: "tenant_archived_idx" },
+);
+channelSchema.index(
+  { tenantId: 1, creatorId: 1 },
+  { name: "tenant_creator_idx" },
+);
+channelSchema.plugin(tenantIsolationPlugin);
 export const Channel = mongoose.model<ChannelInterface>(
   "Channel",
   channelSchema,

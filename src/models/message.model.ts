@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // models/message.model.ts (Updated with Rich Content Support)
 import mongoose, { Document, Schema } from "mongoose";
+import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export enum ContentType {
   TEXT = "text",
@@ -237,6 +238,70 @@ messageSchema.index({ channelId: 1, hasMedia: 1, createdAt: -1 });
 messageSchema.index({ directMessageId: 1, hasMedia: 1, createdAt: -1 });
 messageSchema.index({ contentType: 1 }); // Index for content type queries
 
+// New Indexes for multi-tenancy
+messageSchema.index(
+  { tenantId: 1, messageId: 1 },
+  { name: "tenant_messageId_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, senderId: 1 },
+  { name: "tenant_senderId_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, channelId: 1, createdAt: -1 },
+  { name: "tenant_channel_createdAt_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, directMessageId: 1, createdAt: -1 },
+  { name: "tenant_directMessage_createdAt_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, threadId: 1, createdAt: -1 },
+  { name: "tenant_thread_createdAt_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, isThreadStarter: 1 },
+  { name: "tenant_isThreadStarter_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, "mentions.userId": 1 },
+  { name: "tenant_mentions_userId_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, isPinned: 1 },
+  { name: "tenant_isPinned_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, replyToId: 1 },
+  { name: "tenant_replyToId_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, hasMedia: 1, createdAt: -1 },
+  { name: "tenant_hasMedia_createdAt_idx" },
+);
+messageSchema.index(
+  { tenantId: 1, channelId: 1, hasMedia: 1, createdAt: -1 },
+  { name: "tenant_channel_media_idx" },
+);
+messageSchema.index(
+  {
+    tenantId: 1,
+    directMessageId: 1,
+    hasMedia: 1,
+    createdAt: -1,
+  },
+  {
+    name: "tenant_directMessage_media_idx",
+  },
+);
+messageSchema.index(
+  { tenantId: 1, contentType: 1 },
+  { name: "tenant_contentType_idx" },
+);
+
+// Apply tenant isolation plugin
+
+messageSchema.plugin(tenantIsolationPlugin);
 export const Message = mongoose.model<MessageInterface>(
   "Message",
   messageSchema,
