@@ -6,6 +6,7 @@ import channelRoutes from "./channel.routes";
 import messageReactionRoutes from "./message-reaction.routes";
 import attachmentRoutes from "./attachment.routes";
 import presenceRoutes from "../presence/routes/presence.routes";
+import tenantRoutes from "./tenant.routes";
 const router = Router();
 
 router.use("/auth", authRoutes);
@@ -13,6 +14,7 @@ router.use("/direct-messages", directMessageRoutes);
 router.use("/users", userRoutes);
 router.use("/channels", channelRoutes);
 router.use("/messages", messageReactionRoutes);
-router.use('/attachments', attachmentRoutes);
+router.use("/attachments", attachmentRoutes);
 router.use("/presence", presenceRoutes);
+router.use("/tenants", tenantRoutes);
 export default router;
