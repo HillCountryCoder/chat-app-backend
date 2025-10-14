@@ -7,6 +7,7 @@ import { z } from "zod";
 import mongoose from "mongoose";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../constants";
 import { ContentType } from "../models";
+import { runInTenantContext } from "../plugins/tenantPlugin";
 
 const logger = createSocketLogger(createLogger("direct-message-socket"));
 const errorHandler = new ErrorHandler(createLogger("socket-error-handler"));
@@ -31,8 +32,8 @@ const plateValueSchema = z.array(
 const sendMessageSchema = z
   .object({
     content: z.string().min(1).max(2000),
-    richContent: plateValueSchema.optional(), // Use the schema directly
-    contentType: z.nativeEnum(ContentType).optional(), // Add this
+    richContent: plateValueSchema.optional(),
+    contentType: z.nativeEnum(ContentType).optional(),
     receiverId: z.string().optional(),
     directMessageId: z.string().optional(),
     attachmentIds: z
@@ -72,10 +73,12 @@ const sendMessageSchema = z
       path: ["richContent"],
     },
   );
+
 export const registerDirectMessageHandlers = (
   io: Server,
   socket: Socket,
   userId: string,
+  tenantId: string,
 ) => {
   // When a user sends a new direct message
   socket.on("send_direct_message", async (data, callback) => {
@@ -83,6 +86,7 @@ export const registerDirectMessageHandlers = (
       logger.event(socket.id, "send_direct_message", {
         ...data,
         attachmentCount: data.attachmentIds?.length || 0,
+        tenantId,
       });
 
       // Validate the data
@@ -98,16 +102,18 @@ export const registerDirectMessageHandlers = (
         throw error;
       }
 
-      // Process the message
-      const result = await directMessageService.sendMessage({
-        senderId: userId,
-        receiverId: validatedData.receiverId,
-        directMessageId: validatedData.directMessageId,
-        content: validatedData.content,
-        richContent: validatedData.richContent, // Add this
-        contentType: validatedData.contentType, // Add this
-        attachmentIds: validatedData.attachmentIds || [],
-        replyToId: validatedData.replyToId,
+      // Process the message within tenant context
+      const result = await runInTenantContext(tenantId, async () => {
+        return await directMessageService.sendMessage({
+          senderId: userId,
+          receiverId: validatedData.receiverId,
+          directMessageId: validatedData.directMessageId,
+          content: validatedData.content,
+          richContent: validatedData.richContent,
+          contentType: validatedData.contentType,
+          attachmentIds: validatedData.attachmentIds || [],
+          replyToId: validatedData.replyToId,
+        });
       });
 
       // Find the recipient (the other user in the conversation)
@@ -126,23 +132,25 @@ export const registerDirectMessageHandlers = (
             ? recipientId.toString()
             : recipientId;
 
-        // Emit to the recipient's room
-        const recipientRoom = `user:${recipientIdStr}`;
+        // Emit to the recipient's TENANT-SCOPED room
+        const recipientRoom = `tenant:${tenantId}:user:${recipientIdStr}`;
         io.to(recipientRoom).emit("new_direct_message", {
           message: result.message,
           directMessage: result.directMessage,
         });
 
-        // Get unread counts for the recipient
-        const unreadCounts = await directMessageService.getUnreadCounts(
-          recipientIdStr,
-        );
+        // Get unread counts for the recipient (within tenant context)
+        await runInTenantContext(tenantId, async () => {
+          const unreadCounts = await directMessageService.getUnreadCounts(
+            recipientIdStr,
+          );
 
-        // Emit the unread counts to the recipient
-        io.to(`user:${recipientIdStr}`).emit(
-          "unread_counts_update",
-          unreadCounts,
-        );
+          // Emit the unread counts to the recipient's TENANT-SCOPED room
+          io.to(`tenant:${tenantId}:user:${recipientIdStr}`).emit(
+            "unread_counts_update",
+            unreadCounts,
+          );
+        });
       }
 
       // Send confirmation to sender
@@ -172,11 +180,15 @@ export const registerDirectMessageHandlers = (
     try {
       const { directMessageId } = data;
 
-      // Mark messages as read
-      await directMessageService.markMessagesAsRead(directMessageId, userId);
+      // Mark messages as read (within tenant context)
+      await runInTenantContext(tenantId, async () => {
+        await directMessageService.markMessagesAsRead(directMessageId, userId);
+      });
 
-      // Get updated unread counts
-      const unreadCounts = await directMessageService.getUnreadCounts(userId);
+      // Get updated unread counts (within tenant context)
+      const unreadCounts = await runInTenantContext(tenantId, async () => {
+        return await directMessageService.getUnreadCounts(userId);
+      });
 
       // Send back to the client
       socket.emit("unread_counts_update", unreadCounts);
@@ -201,9 +213,12 @@ export const registerDirectMessageHandlers = (
 
   socket.on("join_direct_message", (data, callback) => {
     try {
-      logger.event(socket.id, "join_direct_message", data);
+      logger.event(socket.id, "join_direct_message", { ...data, tenantId });
       const { directMessageId } = data;
-      socket.join(`direct_message:${directMessageId}`);
+
+      // Join TENANT-SCOPED direct message room
+      const dmRoom = `tenant:${tenantId}:direct_message:${directMessageId}`;
+      socket.join(dmRoom);
 
       if (typeof callback === "function") {
         callback({ success: true });
@@ -219,9 +234,12 @@ export const registerDirectMessageHandlers = (
   });
 
   socket.on("leave_direct_message", (data) => {
-    logger.event(socket.id, "leave_direct_message", data);
+    logger.event(socket.id, "leave_direct_message", { ...data, tenantId });
     const { directMessageId } = data;
-    socket.leave(`direct_message:${directMessageId}`);
+
+    // Leave TENANT-SCOPED direct message room
+    const dmRoom = `tenant:${tenantId}:direct_message:${directMessageId}`;
+    socket.leave(dmRoom);
   });
 
   socket.on("subscribe_attachment_updates", (data, callback) => {
@@ -230,12 +248,16 @@ export const registerDirectMessageHandlers = (
       if (!Array.isArray(attachmentIds)) {
         throw new ValidationError("attachmentIds must be an array");
       }
-      // Join attachment-specific rooms for real-time updates
+
+      // Join TENANT-SCOPED attachment-specific rooms for real-time updates
       attachmentIds.forEach((attachmentId: string) => {
-        socket.join(`attachment:${attachmentId}`);
+        const attachmentRoom = `tenant:${tenantId}:attachment:${attachmentId}`;
+        socket.join(attachmentRoom);
       });
+
       logger.event(socket.id, "subscribed_to_attachment_updates", {
         attachmentCount: attachmentIds.length,
+        tenantId,
       });
 
       if (typeof callback === "function") {
@@ -256,7 +278,7 @@ export const registerDirectMessageHandlers = (
 
   socket.on("edit_direct_message", async (data, callback) => {
     try {
-      logger.event(socket.id, "edit_direct_message", data);
+      logger.event(socket.id, "edit_direct_message", { ...data, tenantId });
       const { directMessageId, messageId, content, richContent, contentType } =
         data;
 
@@ -265,17 +287,22 @@ export const registerDirectMessageHandlers = (
           "directMessageId, messageId, and content are required",
         );
       }
-      const result = await directMessageService.editMessage({
-        directMessageId,
-        messageId,
-        userId,
-        content,
-        richContent,
-        contentType,
+
+      // Edit message (within tenant context)
+      const result = await runInTenantContext(tenantId, async () => {
+        return await directMessageService.editMessage({
+          directMessageId,
+          messageId,
+          userId,
+          content,
+          richContent,
+          contentType,
+        });
       });
 
-      // Emit to the direct message room
-      io.to(`direct_message:${directMessageId}`).emit("message_updated", {
+      // Emit to the TENANT-SCOPED direct message room
+      const dmRoom = `tenant:${tenantId}:direct_message:${directMessageId}`;
+      io.to(dmRoom).emit("message_updated", {
         message: result.message,
         directMessageId,
       });

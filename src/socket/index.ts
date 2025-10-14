@@ -4,7 +4,7 @@ import { socketAuthMiddleware } from "./middleware/auth.middleware";
 import { ErrorHandler } from "../common/errors";
 import { registerDirectMessageHandlers } from "./direct-message.handler";
 import { registerChannelHandlers } from "./channel.handler";
-import { registerAttachmentHandlers } from "./attachment.handler"; // Phase 3
+import { registerAttachmentHandlers } from "./attachment.handler";
 import { Server as HttpServer } from "http";
 import { unreadMessagesService } from "../services/unread-messages.service";
 import { env } from "process";
@@ -14,6 +14,8 @@ import {
   setupPresenceBroadcasting,
 } from "../presence/socket/presence.handler";
 import { ServiceLocator } from "../common/service-locator";
+import { socketTenantMiddleware } from "./middleware/socketTenant.middleware";
+import { runInTenantContext } from "../plugins/tenantPlugin";
 
 const logger = createLogger("socket-server");
 const socketLogger = createSocketLogger(logger);
@@ -36,11 +38,11 @@ export const initializeSocketServer = (server: HttpServer) => {
         "https://chat-app-frontend-one-coral.vercel.app",
         "http://localhost:3000",
         "https://www.whatnextplease.com",
-		"https://staging.whatnextplease.com"
+        "https://staging.whatnextplease.com",
       ];
-	  if (!origin) {
-		return callback(null, true);
-	  } 
+      if (!origin) {
+        return callback(null, true);
+      }
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -49,10 +51,19 @@ export const initializeSocketServer = (server: HttpServer) => {
     },
   });
 
+  logger.info("Initializing Socket.IO server with tenant isolation...");
+
   socketServerInstance = io;
 
-  // Socket authentication middleware
+  // Apply tenant middleware FIRST - this sets socket.data.tenantId
+  socketTenantMiddleware(io);
+
+  // Socket authentication middleware (runs after tenant middleware)
   io.use(socketAuthMiddleware);
+
+  logger.info("Socket.IO server initialized with tenant isolation ✅");
+
+  // Setup presence broadcasting
   const serviceLocator = ServiceLocator.getInstance();
   try {
     const presenceManager = serviceLocator.getPresenceManager();
@@ -66,38 +77,53 @@ export const initializeSocketServer = (server: HttpServer) => {
     }
   }
 
+  // Main connection handler with TENANT-AWARE logic
   io.on("connection", (socket) => {
     try {
+      // Extract userId from auth middleware
       const userId = socket.data.user._id.toString();
 
-      socketLogger.connection(socket.id, userId);
+      // Extract tenantId from tenant middleware
+      const tenantId = socket.data.tenantId;
 
-      // Add user to their own room for direct messages
-      const userRoom = `user:${userId}`;
+      if (!tenantId) {
+        throw new Error("Tenant ID not found in socket data");
+      }
+
+      socketLogger.connection(socket.id, userId, { tenantId });
+
+      // Join TENANT-SCOPED user room for direct messages
+      const userRoom = `tenant:${tenantId}:user:${userId}`;
       socket.join(userRoom);
 
-      // Set online status
-      socket.broadcast.emit("user_status_changed", {
+      // Broadcast online status to TENANT-SCOPED room
+      socket.to(`tenant:${tenantId}`).emit("user_status_changed", {
         userId,
         status: "online",
       });
 
-      // Register all handlers
-      registerDirectMessageHandlers(io, socket, userId);
-      registerChannelHandlers(io, socket, userId);
-      registerMessageReactionHandlers(io, socket, userId);
-      registerAttachmentHandlers(io, socket, userId);
+      // Register all handlers with tenantId
+      registerDirectMessageHandlers(io, socket, userId, tenantId);
+      registerChannelHandlers(io, socket, userId, tenantId);
+      registerMessageReactionHandlers(io, socket, userId, tenantId);
+      registerAttachmentHandlers(io, socket, userId, tenantId);
       registerPresenceHandlers(io, socket, userId);
 
-      // Send initial unread counts
+      // Send initial unread counts (within tenant context)
       async function sendInitialUnreadCounts() {
         try {
-          const unreadCounts = await unreadMessagesService.getAllUnreadCounts(
-            userId,
-          );
-          socket.emit("unread_counts_update", unreadCounts);
+          await runInTenantContext(tenantId, async () => {
+            const unreadCounts = await unreadMessagesService.getAllUnreadCounts(
+              userId,
+            );
+            socket.emit("unread_counts_update", unreadCounts);
+          });
         } catch (error) {
-          logger.error("Error sending initial unread counts", { error });
+          logger.error("Error sending initial unread counts", {
+            error,
+            userId,
+            tenantId,
+          });
         }
       }
 
@@ -107,7 +133,8 @@ export const initializeSocketServer = (server: HttpServer) => {
       socket.on("disconnect", (reason) => {
         socketLogger.disconnection(socket.id, reason);
 
-        socket.broadcast.emit("user_status_changed", {
+        // Broadcast offline status to TENANT-SCOPED room
+        socket.to(`tenant:${tenantId}`).emit("user_status_changed", {
           userId,
           status: "offline",
         });

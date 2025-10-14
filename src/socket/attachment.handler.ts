@@ -2,9 +2,11 @@ import { Server, Socket } from "socket.io";
 import { createLogger, createSocketLogger } from "../common/logger";
 import { z } from "zod";
 import { attachmentRepository } from "../repositories";
+import { runInTenantContext } from "../plugins/tenantPlugin";
 
 const logger = createSocketLogger(createLogger("attachment-socket"));
 const loggerWinston = createLogger("attachment-handler-logger");
+
 const subscribeSchema = z.object({
   attachmentIds: z.array(z.string()).min(1).max(10),
   requestCurrentStatus: z.boolean().optional(),
@@ -14,43 +16,53 @@ export const registerAttachmentHandlers = (
   io: Server,
   socket: Socket,
   userId: string,
+  tenantId: string,
 ) => {
   socket.on("subscribe_attachment_updates", async (data, callback) => {
     try {
       const { attachmentIds, requestCurrentStatus } =
         subscribeSchema.parse(data);
 
-      // Join attachment-specific rooms for real-time updates
+      // Join TENANT-SCOPED attachment-specific rooms for real-time updates
       attachmentIds.forEach((attachmentId: string) => {
-        socket.join(`attachment:${attachmentId}`);
+        const attachmentRoom = `tenant:${tenantId}:attachment:${attachmentId}`;
+        socket.join(attachmentRoom);
       });
 
       logger.event(socket.id, "subscribed_to_attachment_updates", {
         attachmentCount: attachmentIds.length,
+        tenantId,
       });
+
       if (requestCurrentStatus) {
         try {
-          const attachmentStatuses = await Promise.all(
-            attachmentIds.map(async (attachmentId) => {
-              try {
-                const attachment = await attachmentRepository.findById(
-                  attachmentId,
-                );
-                return attachment
-                  ? {
+          // Fetch attachment statuses within tenant context
+          const attachmentStatuses = await runInTenantContext(
+            tenantId,
+            async () => {
+              return await Promise.all(
+                attachmentIds.map(async (attachmentId) => {
+                  try {
+                    const attachment = await attachmentRepository.findById(
                       attachmentId,
-                      status: attachment.status,
-                      metadata: attachment.metadata,
-                    }
-                  : null;
-              } catch (error) {
-                loggerWinston.warn(
-                  `Failed to get status for attachment ${attachmentId}:`,
-                  error,
-                );
-                return null;
-              }
-            }),
+                    );
+                    return attachment
+                      ? {
+                          attachmentId,
+                          status: attachment.status,
+                          metadata: attachment.metadata,
+                        }
+                      : null;
+                  } catch (error) {
+                    loggerWinston.warn(
+                      `Failed to get status for attachment ${attachmentId}:`,
+                      error,
+                    );
+                    return null;
+                  }
+                }),
+              );
+            },
           );
 
           const validStatuses = attachmentStatuses.filter(Boolean);
@@ -63,6 +75,7 @@ export const registerAttachmentHandlers = (
             loggerWinston.debug("Sent initial attachment statuses", {
               socketId: socket.id,
               attachmentCount: validStatuses.length,
+              tenantId,
             });
           }
         } catch (error) {
@@ -93,12 +106,15 @@ export const registerAttachmentHandlers = (
     try {
       const { attachmentIds } = subscribeSchema.parse(data);
 
+      // Leave TENANT-SCOPED attachment rooms
       attachmentIds.forEach((attachmentId: string) => {
-        socket.leave(`attachment:${attachmentId}`);
+        const attachmentRoom = `tenant:${tenantId}:attachment:${attachmentId}`;
+        socket.leave(attachmentRoom);
       });
 
       logger.event(socket.id, "unsubscribed_from_attachment_updates", {
         attachmentCount: attachmentIds.length,
+        tenantId,
       });
 
       if (typeof callback === "function") {
@@ -115,8 +131,12 @@ export const registerAttachmentHandlers = (
   });
 };
 
+/**
+ * Emit attachment status update to TENANT-SCOPED rooms
+ */
 export const emitAttachmentStatusUpdate = (
   io: Server,
+  tenantId: string,
   attachmentId: string,
   uploadedBy: string,
   data: {
@@ -134,14 +154,13 @@ export const emitAttachmentStatusUpdate = (
     ...data,
   };
 
-  // Emit to attachment-specific room
-  io.to(`attachment:${attachmentId}`).emit(
-    "attachment_status_update",
-    statusUpdate,
-  );
+  // Emit to TENANT-SCOPED attachment-specific room
+  const attachmentRoom = `tenant:${tenantId}:attachment:${attachmentId}`;
+  io.to(attachmentRoom).emit("attachment_status_update", statusUpdate);
 
-  // Also emit to user's room for general notifications
-  io.to(`user:${uploadedBy}`).emit("attachment_processing_complete", {
+  // Also emit to TENANT-SCOPED user's room for general notifications
+  const userRoom = `tenant:${tenantId}:user:${uploadedBy}`;
+  io.to(userRoom).emit("attachment_processing_complete", {
     attachmentId,
     status: data.status,
     fileName: data.name,
@@ -150,6 +169,7 @@ export const emitAttachmentStatusUpdate = (
   loggerWinston.debug("Attachment status update emitted", {
     attachmentId,
     status: data.status,
-    roomsNotified: [`attachment:${attachmentId}`, `user:${uploadedBy}`],
+    tenantId,
+    roomsNotified: [attachmentRoom, userRoom],
   });
 };
