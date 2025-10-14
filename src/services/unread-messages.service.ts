@@ -1,7 +1,6 @@
 import { createLogger } from "../common/logger";
-import { NotFoundError } from "../common/errors";
 import { redisClient } from "../common/redis/client";
-
+import { tenantContext } from "../plugins/tenantPlugin";
 const logger = createLogger("unread-messages-service");
 
 export class UnreadMessagesService {
@@ -21,13 +20,15 @@ export class UnreadMessagesService {
     userId: string,
     directMessageId: string,
   ): string {
-    return `unread:dm:${userId}:${directMessageId}`;
+    const tenantId = this.getTenantId();
+    return `tenant:${tenantId}:unread:dm:${userId}:${directMessageId}`;
   }
   /**
    * Get Redis key for user unread messages in a channel
    */
   private getChannelUnreadKey(userId: string, channelId: string): string {
-    return `unread:channel:${userId}:${channelId}`;
+    const tenantId = this.getTenantId();
+    return `tenant:${tenantId}:unread:channel:${userId}:${channelId}`;
   }
   /**
    * Increment unread count for all recipients of a message
@@ -106,7 +107,8 @@ export class UnreadMessagesService {
 
         dmKeys.forEach((key, index) => {
           // Extract the directMessageId from the key
-          const directMessageId = key.split(":")[3];
+          const parts = key.split(":");
+          const directMessageId = parts[5];
           const count = parseInt(dmValues[index] || "0", 10);
           directMessages[directMessageId] = count;
         });
@@ -118,7 +120,8 @@ export class UnreadMessagesService {
 
         channelKeys.forEach((key, index) => {
           // Extract the channelId from the key
-          const channelId = key.split(":")[3];
+		  const parts = key.split(":")
+          const channelId = parts[5];
           const count = parseInt(channelValues[index] || "0", 10);
           channels[channelId] = count;
         });
@@ -173,6 +176,14 @@ export class UnreadMessagesService {
       logger.error("Error getting total unread count", { error });
       return 0;
     }
+  }
+
+  private getTenantId(): string {
+    const context = tenantContext.getStore();
+    if (!context?.tenantId) {
+      throw new Error("Operation attempted without tenant context");
+    }
+    return context.tenantId;
   }
 }
 export const unreadMessagesService = UnreadMessagesService.getInstance();

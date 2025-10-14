@@ -16,6 +16,7 @@ import {
   EDIT_TIME_LIMIT,
   validateEditTimeLimit,
 } from "./validation/message.validation";
+import { runInTenantContext, tenantContext } from "../plugins/tenantPlugin";
 
 const logger = createLogger("message-service");
 
@@ -37,6 +38,14 @@ export class MessageService {
       MessageService.instance = new MessageService();
     }
     return MessageService.instance;
+  }
+
+  private getTenantId(): string {
+    const context = tenantContext.getStore();
+    if (!context?.tenantId) {
+      throw new Error("Message operation attempted without tenant context");
+    }
+    return context.tenantId;
   }
 
   async getMessageByIdOrThrowError(
@@ -82,83 +91,87 @@ export class MessageService {
     threadId?: string;
     replyToId?: string;
   }) {
-    const {
-      senderId,
-      content,
-      richContent,
-      contentType,
-      attachmentIds = [],
-      channelId,
-      directMessageId,
-      threadId,
-      replyToId,
-    } = data;
+    return runInTenantContext(this.getTenantId(), async () => {
+      const tenantId = this.getTenantId();
+      const {
+        senderId,
+        content,
+        richContent,
+        contentType,
+        attachmentIds = [],
+        channelId,
+        directMessageId,
+        threadId,
+        replyToId,
+      } = data;
 
-    // Validate rich content if provided
-    if (richContent) {
-      this.validateRichContent(richContent);
-    }
+      // Validate rich content if provided
+      if (richContent) {
+        this.validateRichContent(richContent);
+      }
 
-    // Determine content type automatically if not provided
-    let finalContentType = contentType;
-    if (!finalContentType) {
-      finalContentType = richContent ? ContentType.RICH : ContentType.TEXT;
-    }
+      // Determine content type automatically if not provided
+      let finalContentType = contentType;
+      if (!finalContentType) {
+        finalContentType = richContent ? ContentType.RICH : ContentType.TEXT;
+      }
 
-    // Validate content type consistency
-    if (richContent && finalContentType !== ContentType.RICH) {
-      throw new ValidationError(
-        "Content type must be 'rich' when rich content is provided",
-      );
-    }
-
-    if (!richContent && finalContentType === ContentType.RICH) {
-      throw new ValidationError(
-        "Rich content must be provided when content type is 'rich'",
-      );
-    }
-
-    // Calculate total attachment size if attachments provided
-    let totalSize = 0;
-    if (attachmentIds.length > 0) {
-      // Validate all attachments are ready and owned by sender
-      await this.validateAttachmentAccess(attachmentIds, senderId);
-
-      totalSize = await this.calculateMessageSize(attachmentIds);
-      if (totalSize <= 0) {
+      // Validate content type consistency
+      if (richContent && finalContentType !== ContentType.RICH) {
         throw new ValidationError(
-          "Total attachment size must be greater than 0",
+          "Content type must be 'rich' when rich content is provided",
         );
       }
-    }
 
-    // Create message
-    const message = await messageRepository.create({
-      messageId: uuidv4(),
-      senderId,
-      channelId,
-      directMessageId,
-      threadId,
-      content,
-      richContent: richContent || undefined,
-      contentType: finalContentType,
-      attachments: attachmentIds,
-      hasMedia: attachmentIds.length > 0,
-      totalAttachmentSize: totalSize > 0 ? totalSize : undefined,
-      replyToId,
-      reactions: [],
-      mentions: [],
+      if (!richContent && finalContentType === ContentType.RICH) {
+        throw new ValidationError(
+          "Rich content must be provided when content type is 'rich'",
+        );
+      }
+
+      // Calculate total attachment size if attachments provided
+      let totalSize = 0;
+      if (attachmentIds.length > 0) {
+        // Validate all attachments are ready and owned by sender
+        await this.validateAttachmentAccess(attachmentIds, senderId);
+
+        totalSize = await this.calculateMessageSize(attachmentIds);
+        if (totalSize <= 0) {
+          throw new ValidationError(
+            "Total attachment size must be greater than 0",
+          );
+        }
+      }
+
+      // Create message
+      const message = await messageRepository.create({
+        messageId: uuidv4(),
+        senderId,
+        channelId,
+        directMessageId,
+        threadId,
+        content,
+        richContent: richContent || undefined,
+        contentType: finalContentType,
+        attachments: attachmentIds,
+        hasMedia: attachmentIds.length > 0,
+        totalAttachmentSize: totalSize > 0 ? totalSize : undefined,
+        replyToId,
+        reactions: [],
+        mentions: [],
+      });
+
+      logger.info("Created message with attachments", {
+        messageId: message.messageId,
+        contentType: finalContentType,
+        hasRichContent: !!richContent,
+        attachmentCount: attachmentIds.length,
+        totalSize,
+        tenantId,
+      });
+
+      return message;
     });
-
-    logger.info("Created message with attachments", {
-      messageId: message.messageId,
-      contentType: finalContentType,
-      hasRichContent: !!richContent,
-      attachmentCount: attachmentIds.length,
-      totalSize,
-    });
-
-    return message;
   }
 
   // Validate rich content format
@@ -217,65 +230,68 @@ export class MessageService {
     userId: string,
   ): Promise<void> {
     if (!attachmentIds.length) return;
-
-    const attachments = await attachmentRepository.findReadyAttachments(
-      attachmentIds,
-    );
-
-    if (attachments.length !== attachmentIds.length) {
-      throw new ValidationError(
-        "Some attachments are not ready or don't exist",
+    return runInTenantContext(this.getTenantId(), async () => {
+      const attachments = await attachmentRepository.findReadyAttachments(
+        attachmentIds,
       );
-    }
 
-    // Check ownership
-    const unauthorizedAttachments = attachments.filter(
-      (att) => att.uploadedBy.toString() !== userId,
-    );
-    if (unauthorizedAttachments.length > 0) {
-      throw new ForbiddenError(
-        "You don't have permission to use some of these attachments",
+      if (attachments.length !== attachmentIds.length) {
+        throw new ValidationError(
+          "Some attachments are not ready or don't exist",
+        );
+      }
+
+      // Check ownership
+      const unauthorizedAttachments = attachments.filter(
+        (att) => att.uploadedBy.toString() !== userId,
       );
-    }
+      if (unauthorizedAttachments.length > 0) {
+        throw new ForbiddenError(
+          "You don't have permission to use some of these attachments",
+        );
+      }
+    });
   }
 
   async populateMessageAttachments(messages: any[]) {
     if (!messages.length) return messages;
 
-    // Get all attachment IDs from all messages
-    const allAttachmentIds = messages
-      .filter((msg) => msg.attachments?.length > 0)
-      .flatMap((msg) =>
-        msg.attachments.map((id: mongoose.Types.ObjectId) => id.toString()),
-      );
+    return runInTenantContext(this.getTenantId(), async () => {
+      // Get all attachment IDs from all messages
+      const allAttachmentIds = messages
+        .filter((msg) => msg.attachments?.length > 0)
+        .flatMap((msg) =>
+          msg.attachments.map((id: mongoose.Types.ObjectId) => id.toString()),
+        );
 
-    if (!allAttachmentIds.length) return messages;
+      if (!allAttachmentIds.length) return messages;
 
-    // Fetch all attachments in one query
-    const attachmentsMap = new Map();
-    const attachments = await attachmentRepository.find({
-      _id: { $in: allAttachmentIds },
-    });
+      // Fetch all attachments in one query
+      const attachmentsMap = new Map();
+      const attachments = await attachmentRepository.find({
+        _id: { $in: allAttachmentIds },
+      });
 
-    attachments.forEach((att) => {
-      attachmentsMap.set(att._id.toString(), att);
-    });
+      attachments.forEach((att) => {
+        attachmentsMap.set(att._id.toString(), att);
+      });
 
-    // Populate messages with attachment data
-    return messages.map((message) => {
-      if (message.attachments?.length > 0) {
-        const populatedAttachments = message.attachments
-          .map((attId: mongoose.Types.ObjectId) =>
-            attachmentsMap.get(attId.toString()),
-          )
-          .filter(Boolean);
+      // Populate messages with attachment data
+      return messages.map((message) => {
+        if (message.attachments?.length > 0) {
+          const populatedAttachments = message.attachments
+            .map((attId: mongoose.Types.ObjectId) =>
+              attachmentsMap.get(attId.toString()),
+            )
+            .filter(Boolean);
 
-        return {
-          ...(message.toObject ? message.toObject() : message),
-          attachments: populatedAttachments,
-        };
-      }
-      return message.toObject ? message.toObject() : message;
+          return {
+            ...(message.toObject ? message.toObject() : message),
+            attachments: populatedAttachments,
+          };
+        }
+        return message.toObject ? message.toObject() : message;
+      });
     });
   }
 
@@ -290,36 +306,38 @@ export class MessageService {
       after?: string;
     },
   ) {
-    const query: any = { hasMedia: true };
+    return runInTenantContext(this.getTenantId(), async () => {
+      const query: any = { hasMedia: true };
 
-    if (directMessageId) query.directMessageId = directMessageId;
-    if (channelId) query.channelId = channelId;
-    if (threadId) query.threadId = threadId;
+      if (directMessageId) query.directMessageId = directMessageId;
+      if (channelId) query.channelId = channelId;
+      if (threadId) query.threadId = threadId;
 
-    if (options?.before) {
-      query.createdAt = { $lt: new Date(options.before) };
-    }
-    if (options?.after) {
-      query.createdAt = { ...query.createdAt, $gt: new Date(options.after) };
-    }
+      if (options?.before) {
+        query.createdAt = { $lt: new Date(options.before) };
+      }
+      if (options?.after) {
+        query.createdAt = { ...query.createdAt, $gt: new Date(options.after) };
+      }
 
-    return messageRepository.findWithPopulate(query, {
-      sort: { createdAt: -1 },
-      limit: options?.limit,
-      populate: [
-        {
-          path: "senderId",
-          select: "_id username displayName avatarUrl",
-        },
-        {
-          path: "replyTo",
-          select: "content richContent contentType senderId",
-          populate: {
+      return messageRepository.findWithPopulate(query, {
+        sort: { createdAt: -1 },
+        limit: options?.limit,
+        populate: [
+          {
             path: "senderId",
-            select: "displayName username",
+            select: "_id username displayName avatarUrl",
           },
-        },
-      ],
+          {
+            path: "replyTo",
+            select: "content richContent contentType senderId",
+            populate: {
+              path: "senderId",
+              select: "displayName username",
+            },
+          },
+        ],
+      });
     });
   }
 
@@ -410,33 +428,35 @@ export class MessageService {
     type: "dm" | "channel" | "thread",
     status: "ready" | "processing" | "failed",
   ) {
-    // First get messages with attachments
-    const query: any = { hasMedia: true };
-    if (type === "dm") query.directMessageId = conversationId;
-    if (type === "channel") query.channelId = conversationId;
-    if (type === "thread") query.threadId = conversationId;
+    return runInTenantContext(this.getTenantId(), async () => {
+      // First get messages with attachments
+      const query: any = { hasMedia: true };
+      if (type === "dm") query.directMessageId = conversationId;
+      if (type === "channel") query.channelId = conversationId;
+      if (type === "thread") query.threadId = conversationId;
 
-    const messages = await messageRepository.find(query);
+      const messages = await messageRepository.find(query);
 
-    // Filter by attachment status
-    const filteredMessages = [];
-    for (const message of messages) {
-      if (message.attachments.length > 0) {
-        const attachments = await attachmentRepository.find({
-          _id: { $in: message.attachments },
-          status,
-        });
-
-        if (attachments.length > 0) {
-          filteredMessages.push({
-            ...message.toObject(),
-            attachments,
+      // Filter by attachment status
+      const filteredMessages = [];
+      for (const message of messages) {
+        if (message.attachments.length > 0) {
+          const attachments = await attachmentRepository.find({
+            _id: { $in: message.attachments },
+            status,
           });
+
+          if (attachments.length > 0) {
+            filteredMessages.push({
+              ...message.toObject(),
+              attachments,
+            });
+          }
         }
       }
-    }
 
-    return filteredMessages;
+      return filteredMessages;
+    });
   }
 
   setMessageContext(
@@ -474,90 +494,94 @@ export class MessageService {
     contextType: "direct_message" | "channel";
     contextId: string;
   }) {
-    const {
-      messageId,
-      userId,
-      content,
-      richContent,
-      contentType,
-      contextType,
-      contextId,
-    } = data;
+    return runInTenantContext(this.getTenantId(), async () => {
+      const tenantId = this.getTenantId();
+      const {
+        messageId,
+        userId,
+        content,
+        richContent,
+        contentType,
+        contextType,
+        contextId,
+      } = data;
 
-    // Get the message first
-    const message = await messageRepository.findById(messageId);
-    if (!message) {
-      throw new NotFoundError("message");
-    }
+      // Get the message first
+      const message = await messageRepository.findById(messageId);
+      if (!message) {
+        throw new NotFoundError("message");
+      }
 
-    // Check if user is the sender
-    if (message.senderId.toString() !== userId) {
-      throw new ForbiddenError("You can only edit your own messages");
-    }
+      // Check if user is the sender
+      if (message.senderId.toString() !== userId) {
+        throw new ForbiddenError("You can only edit your own messages");
+      }
 
-    // Check if message is within edit time limit
-    if (!validateEditTimeLimit(message.createdAt)) {
-      throw new ForbiddenError(
-        `Messages can only be edited within ${
-          EDIT_TIME_LIMIT / (1000 * 60 * 60)
-        } hours of sending`,
+      // Check if message is within edit time limit
+      if (!validateEditTimeLimit(message.createdAt)) {
+        throw new ForbiddenError(
+          `Messages can only be edited within ${
+            EDIT_TIME_LIMIT / (1000 * 60 * 60)
+          } hours of sending`,
+        );
+      }
+
+      // Validate that the message belongs to the correct context
+      if (
+        contextType === "direct_message" &&
+        message.directMessageId?.toString() !== contextId
+      ) {
+        throw new ForbiddenError(
+          "Message does not belong to this direct message",
+        );
+      }
+      if (
+        contextType === "channel" &&
+        message.channelId?.toString() !== contextId
+      ) {
+        throw new ForbiddenError("Message does not belong to this channel");
+      }
+
+      // Validate rich content if provided
+      if (richContent) {
+        this.validateRichContent(richContent);
+      }
+
+      // Determine final content type
+      let finalContentType = contentType;
+      if (!finalContentType) {
+        finalContentType = richContent ? ContentType.RICH : ContentType.TEXT;
+      }
+
+      // Update the message
+      const updateData = {
+        content,
+        richContent,
+        contentType: finalContentType,
+        editedAt: new Date(),
+        isEdited: true,
+      };
+
+      const updatedMessage = await messageRepository.updateMessage(
+        messageId,
+        updateData,
       );
-    }
+      if (!updatedMessage) {
+        throw new NotFoundError("message");
+      }
 
-    // Validate that the message belongs to the correct context
-    if (
-      contextType === "direct_message" &&
-      message.directMessageId?.toString() !== contextId
-    ) {
-      throw new ForbiddenError(
-        "Message does not belong to this direct message",
-      );
-    }
-    if (
-      contextType === "channel" &&
-      message.channelId?.toString() !== contextId
-    ) {
-      throw new ForbiddenError("Message does not belong to this channel");
-    }
+      logger.info("Message edited successfully", {
+        messageId,
+        userId,
+        contextType,
+        contextId,
+        contentType: finalContentType,
+        hasRichContent: !!richContent,
+        tenantId,
+      });
 
-    // Validate rich content if provided
-    if (richContent) {
-      this.validateRichContent(richContent);
-    }
-
-    // Determine final content type
-    let finalContentType = contentType;
-    if (!finalContentType) {
-      finalContentType = richContent ? ContentType.RICH : ContentType.TEXT;
-    }
-
-    // Update the message
-    const updateData = {
-      content,
-      richContent,
-      contentType: finalContentType,
-      editedAt: new Date(),
-      isEdited: true,
-    };
-
-    const updatedMessage = await messageRepository.updateMessage(
-      messageId,
-      updateData,
-    );
-    if (!updatedMessage) {
-      throw new NotFoundError("message");
-    }
-
-    logger.info("Message edited successfully", {
-      messageId,
-      userId,
-      contextType,
-      contextId,
-      contentType: finalContentType,
-      hasRichContent: !!richContent,
+      return updatedMessage;
     });
-
-    return updatedMessage;
   }
 }
 

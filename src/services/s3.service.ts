@@ -164,6 +164,130 @@ export class S3Service {
     return result;
   }
 
+  async generateUploadUrlWithKey(params: {
+    key: string; // Pre-generated tenant-scoped key
+    fileType: string;
+    fileSize: number;
+    hasClientThumbnail?: boolean;
+  }): Promise<{
+    presignedUrl: string;
+    key: string;
+    bucket: string;
+    cdnUrl: string;
+    thumbnailUpload?: {
+      presignedUrl: string;
+      key: string;
+      bucket: string;
+      cdnUrl: string;
+    };
+  }> {
+    const { key, fileType, fileSize, hasClientThumbnail } = params;
+
+    // Validate input
+    if (!key || !fileType) {
+      throw new BadRequestError("Key and file type are required");
+    }
+
+    // Check file size (25MB limit)
+    if (fileSize > MAX_FILE_SIZE) {
+      throw new BadRequestError("File size exceeds the 25MB limit");
+    }
+
+    const mediaBucket = env.MEDIA_BUCKET_NAME;
+    if (!mediaBucket) {
+      throw new Error("MEDIA_BUCKET_NAME environment variable is not set");
+    }
+
+    // Generate pre-signed URL for main file upload
+    const mainUploadCommand = new PutObjectCommand({
+      Bucket: mediaBucket,
+      Key: key,
+      ContentType: fileType,
+    });
+
+    const presignedUrl = await getSignedUrl(this.s3Client, mainUploadCommand, {
+      expiresIn: 900, // 15 minutes
+    });
+
+    // Generate CDN URL for main file
+    const cdnUrl = env.CDN_DOMAIN
+      ? `https://${env.CDN_DOMAIN}/${key}`
+      : `https://${mediaBucket}.s3.${
+          env.AWS_REGION || "us-east-1"
+        }.amazonaws.com/${key}`;
+
+    const result: {
+      presignedUrl: string;
+      key: string;
+      bucket: string;
+      cdnUrl: string;
+      thumbnailUpload?: {
+        presignedUrl: string;
+        key: string;
+        bucket: string;
+        cdnUrl: string;
+      };
+    } = {
+      presignedUrl,
+      key,
+      bucket: mediaBucket,
+      cdnUrl,
+    };
+
+    // Generate thumbnail upload URL if needed
+    if (hasClientThumbnail && this.isImageOrVideo(fileType)) {
+      const thumbnailBucket = env.THUMBNAIL_BUCKET_NAME;
+      if (!thumbnailBucket) {
+        logger.warn(
+          "THUMBNAIL_BUCKET_NAME not configured, skipping thumbnail upload URL",
+        );
+      } else {
+        // Extract tenant/user path from the main key
+        const keyParts = key.split("/");
+        const fileName = keyParts[keyParts.length - 1];
+        const pathPrefix = keyParts.slice(0, -1).join("/");
+
+        const thumbnailKey = `${pathPrefix}/thumb_${fileName.replace(
+          /\.[^.]+$/,
+          ".jpg",
+        )}`;
+
+        const thumbnailUploadCommand = new PutObjectCommand({
+          Bucket: thumbnailBucket,
+          Key: thumbnailKey,
+          ContentType: "image/jpeg",
+        });
+
+        const thumbnailPresignedUrl = await getSignedUrl(
+          this.s3Client,
+          thumbnailUploadCommand,
+          { expiresIn: 900 },
+        );
+
+        const thumbnailCdnUrl = env.CDN_DOMAIN
+          ? `https://${env.CDN_DOMAIN}/thumbnails/${thumbnailKey}`
+          : `https://${thumbnailBucket}.s3.${
+              env.AWS_REGION || "us-east-1"
+            }.amazonaws.com/${thumbnailKey}`;
+
+        result.thumbnailUpload = {
+          presignedUrl: thumbnailPresignedUrl,
+          key: thumbnailKey,
+          bucket: thumbnailBucket,
+          cdnUrl: thumbnailCdnUrl,
+        };
+      }
+    }
+
+    logger.info("Generated upload URL(s) with custom key", {
+      key,
+      fileType,
+      hasThumbnailUpload: !!result.thumbnailUpload,
+    });
+
+    return result;
+  }
+
   async generateDownloadUrl(bucket: string, key: string): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: bucket,

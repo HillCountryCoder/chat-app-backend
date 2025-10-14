@@ -3,13 +3,14 @@ import { attachmentRepository } from "../repositories/attachment.repository";
 import { userRepository } from "../repositories/user.repository";
 import { s3Service } from "./s3.service";
 import { fileValidationService } from "./file-validation.service";
+import crypto from 'crypto';
 import {
   NotFoundError,
   BadRequestError,
   ForbiddenError,
 } from "../common/errors";
 import { USER_STORAGE_LIMIT } from "../constants";
-
+import { tenantContext } from "../plugins/tenantPlugin";
 const logger = createLogger("attachment-service");
 
 export class AttachmentService {
@@ -40,7 +41,6 @@ export class AttachmentService {
       throw new NotFoundError("user");
     }
 
-    // 🔥 COMPREHENSIVE VALIDATION (replaces Lambda)
     await fileValidationService.quickValidate({
       fileName,
       fileType,
@@ -54,11 +54,11 @@ export class AttachmentService {
     if (currentUsage + fileSize > userStorageLimit) {
       throw new BadRequestError("Storage quota exceeded");
     }
+    const s3Key = this.generateS3Key(userId, fileName);
 
     // Generate S3 upload URL(s)
-    const uploadData = await s3Service.generateUploadUrl({
-      userId,
-      fileName,
+    const uploadData = await s3Service.generateUploadUrlWithKey({
+      key: s3Key,
       fileType,
       fileSize,
       hasClientThumbnail,
@@ -66,6 +66,7 @@ export class AttachmentService {
 
     logger.info("Generated upload URL with validation", {
       userId,
+      tenantId: this.getTenantId(),
       fileName,
       fileType,
       fileSize,
@@ -82,7 +83,7 @@ export class AttachmentService {
         bucket: uploadData.bucket,
         key: uploadData.key,
         maxFileSize: fileSize,
-        validated: true, // Indicate validation was done
+        validated: true,
       },
     };
   }
@@ -155,7 +156,7 @@ export class AttachmentService {
       type: fileType,
       size: fileSize,
       uploadedBy: userId,
-      status: "ready", // 🔥 DIRECTLY SET TO READY - no Lambda processing needed
+      status: "ready",
       metadata: {
         s3: {
           bucket: s3Bucket,
@@ -183,7 +184,6 @@ export class AttachmentService {
     return attachment;
   }
 
-  // 🔥 SIMPLIFIED - No status updates needed from Lambda
   async getAttachment(attachmentId: string, userId: string) {
     const attachment = await attachmentRepository.findById(attachmentId);
 
@@ -214,6 +214,7 @@ export class AttachmentService {
     logger.info("Generated download URL", {
       attachmentId,
       userId,
+      tenantId: this.getTenantId(),
     });
 
     return {
@@ -259,6 +260,7 @@ export class AttachmentService {
     logger.info("Attachment deleted", {
       attachmentId,
       userId,
+      tenantId: this.getTenantId(),
     });
 
     return { success: true };
@@ -286,6 +288,23 @@ export class AttachmentService {
       (total, attachment) => total + attachment.size,
       0,
     );
+  }
+  private getTenantId(): string {
+    const context = tenantContext.getStore();
+    if (!context?.tenantId) {
+      throw new Error("Attachment operation attempted without tenant context");
+    }
+    return context.tenantId;
+  }
+
+  // ADD new method for tenant-scoped S3 keys
+  private generateS3Key(userId: string, fileName: string): string {
+    const tenantId = this.getTenantId();
+    const randomId = crypto.randomBytes(16).toString("hex");
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+
+    // Include tenantId in S3 path
+    return `tenants/${tenantId}/users/${userId}/${randomId}/${sanitizedFileName}`;
   }
 }
 

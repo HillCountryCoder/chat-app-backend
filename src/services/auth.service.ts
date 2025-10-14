@@ -69,7 +69,6 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<string> {
-    // 🔥 NEW: Check if user already has a session from this device
     const existingSession = await RefreshToken.findOne({
       userId: user._id,
       userAgent: userAgent,
@@ -78,7 +77,6 @@ export class AuthService {
     });
 
     if (existingSession) {
-      // 🔥 FIX: Reuse existing session instead of creating new one
       this.logger.info("Reusing existing session", {
         userId: user._id,
         sessionId: existingSession._id,
@@ -288,7 +286,6 @@ export class AuthService {
     }
   }
 
-  // 🔥 NEW: Add cleanup method
   public async cleanupExpiredSessions(userId?: string): Promise<void> {
     const query = userId
       ? { userId, expiresAt: { $lt: new Date() } }
@@ -304,7 +301,6 @@ export class AuthService {
     }
   }
 
-  // 🔥 NEW: Add method to clean up duplicate sessions
   public async cleanupDuplicateSessions(userId: string): Promise<void> {
     // Get all sessions for user grouped by device
     const sessions = await RefreshToken.find({
@@ -373,7 +369,6 @@ export class AuthService {
   public async getUserActiveSessions(
     userId: string,
   ): Promise<RefreshTokenInterface[]> {
-    // 🔥 NEW: Clean up expired sessions before returning active ones
     await this.cleanupExpiredSessions(userId);
 
     return RefreshToken.find({

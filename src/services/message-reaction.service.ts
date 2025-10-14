@@ -4,6 +4,7 @@ import { messageService } from "./message.service";
 import { MessageInterface } from "../models";
 import { NotFoundError } from "../common/errors";
 import mongoose from "mongoose";
+import { runInTenantContext, tenantContext } from "../plugins/tenantPlugin";
 
 const logger = createLogger("message-reaction-service");
 
@@ -19,6 +20,14 @@ export class MessageReactionService {
     return MessageReactionService.instance;
   }
 
+  private getTenantId(): string {
+    const context = tenantContext.getStore();
+    if (!context?.tenantId) {
+      throw new Error("Reaction operation attempted without tenant context");
+    }
+    return context.tenantId;
+  }
+
   /**
    * Add a reaction to a message
    */
@@ -27,55 +36,59 @@ export class MessageReactionService {
     userId: string,
     emoji: string,
   ): Promise<MessageInterface> {
-    const message = await messageService.getMessageByIdOrThrowError(messageId);
-    const userObjectId = this.createObjectId(userId);
+    return runInTenantContext(this.getTenantId(), async () => {
+      const message = await messageService.getMessageByIdOrThrowError(
+        messageId,
+      );
+      const userObjectId = this.createObjectId(userId);
 
-    // Check if user already has this exact reaction
-    const alreadyHasThisEmoji = message.reactions.some(
-      (r) =>
-        r.emoji === emoji &&
-        r.users.some((id) => id.toString() === userObjectId.toString()),
-    );
-
-    if (alreadyHasThisEmoji) {
-      return message; // No change needed
-    }
-
-    // Remove user's existing reactions (different emojis)
-    for (const reaction of message.reactions) {
-      const userIndex = reaction.users.findIndex(
-        (id) => id.toString() === userObjectId.toString(),
+      // Check if user already has this exact reaction
+      const alreadyHasThisEmoji = message.reactions.some(
+        (r) =>
+          r.emoji === emoji &&
+          r.users.some((id) => id.toString() === userObjectId.toString()),
       );
 
-      if (userIndex !== -1) {
-        reaction.users.splice(userIndex, 1);
-        reaction.count = reaction.users.length;
+      if (alreadyHasThisEmoji) {
+        return message; // No change needed
+      }
 
-        if (reaction.users.length === 0) {
-          const reactionIndex = message.reactions.indexOf(reaction);
-          if (reactionIndex !== -1) {
-            message.reactions.splice(reactionIndex, 1);
+      // Remove user's existing reactions (different emojis)
+      for (const reaction of message.reactions) {
+        const userIndex = reaction.users.findIndex(
+          (id) => id.toString() === userObjectId.toString(),
+        );
+
+        if (userIndex !== -1) {
+          reaction.users.splice(userIndex, 1);
+          reaction.count = reaction.users.length;
+
+          if (reaction.users.length === 0) {
+            const reactionIndex = message.reactions.indexOf(reaction);
+            if (reactionIndex !== -1) {
+              message.reactions.splice(reactionIndex, 1);
+            }
           }
         }
       }
-    }
 
-    // Add the new reaction
-    const existingReaction = message.reactions.find((r) => r.emoji === emoji);
+      // Add the new reaction
+      const existingReaction = message.reactions.find((r) => r.emoji === emoji);
 
-    if (existingReaction) {
-      existingReaction.users.push(userObjectId);
-      existingReaction.count = existingReaction.users.length;
-    } else {
-      message.reactions.push({
-        emoji,
-        count: 1,
-        users: [userObjectId],
-      });
-    }
+      if (existingReaction) {
+        existingReaction.users.push(userObjectId);
+        existingReaction.count = existingReaction.users.length;
+      } else {
+        message.reactions.push({
+          emoji,
+          count: 1,
+          users: [userObjectId],
+        });
+      }
 
-    await message.save();
-    return message;
+      await message.save();
+      return message;
+    });
   }
 
   /**
