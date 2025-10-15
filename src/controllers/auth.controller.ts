@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../common/types/auth.type";
+import { TenantAuthenticatedRequest } from "../common/types/auth.type";
 import { userService } from "../services/user.service";
 import { authService } from "../services/auth.service";
 import {
@@ -119,7 +119,7 @@ export class AuthController {
   }
 
   static async logout(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -146,7 +146,7 @@ export class AuthController {
   }
 
   static async logoutAll(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -174,7 +174,7 @@ export class AuthController {
   }
 
   static async getCurrentUser(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -206,7 +206,7 @@ export class AuthController {
   }
 
   static async getActiveSessions(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -235,7 +235,7 @@ export class AuthController {
 
   // 🔥 NEW: Add cleanup endpoints
   static async cleanupSessions(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {

@@ -1,6 +1,6 @@
 // src/controllers/channel.controller.ts
 import { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../common/types/auth.type";
+import { TenantAuthenticatedRequest } from "../common/types/auth.type";
 import { channelService } from "../services/channel.service";
 import { createLogger } from "../common/logger";
 import { z } from "zod";
@@ -125,7 +125,7 @@ const editMessageSchema = z
 
 export class ChannelController {
   static async createChannel(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -160,7 +160,7 @@ export class ChannelController {
   }
 
   static async getChannels(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -181,7 +181,7 @@ export class ChannelController {
   }
 
   static async getChannelById(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -203,7 +203,7 @@ export class ChannelController {
   }
 
   static async addMember(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -242,7 +242,7 @@ export class ChannelController {
   }
 
   static async removeMember(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -264,7 +264,7 @@ export class ChannelController {
   }
 
   static async getMessages(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -303,7 +303,7 @@ export class ChannelController {
   }
 
   static async sendMessage(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -365,7 +365,7 @@ export class ChannelController {
 
   // Thread related endpoints
   static async createThread(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -407,7 +407,7 @@ export class ChannelController {
   }
 
   static async getThreads(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -429,7 +429,7 @@ export class ChannelController {
   }
 
   static async getThreadById(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -451,7 +451,7 @@ export class ChannelController {
   }
 
   static async getThreadMessages(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -492,7 +492,7 @@ export class ChannelController {
   }
 
   static async sendThreadMessage(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -534,7 +534,7 @@ export class ChannelController {
   }
 
   static async markAsRead(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -554,7 +554,7 @@ export class ChannelController {
     }
   }
   static async getChannelMembers(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -576,7 +576,7 @@ export class ChannelController {
   }
 
   static async editMessage(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {

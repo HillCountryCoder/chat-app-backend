@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../common/types/auth.type";
+import { TenantAuthenticatedRequest } from "../common/types/auth.type";
 import { userService } from "../services/user.service";
 import { createLogger } from "../common/logger";
 import { z } from "zod";
@@ -15,7 +15,7 @@ const getUsersQuerySchema = z.object({
 
 export class UserController {
   static async getAllUsers(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -47,7 +47,7 @@ export class UserController {
     }
   }
   static async getUserById(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {

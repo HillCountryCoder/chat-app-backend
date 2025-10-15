@@ -3,10 +3,22 @@ import { authService } from "../../services/auth.service";
 import { userService } from "../../services/user.service";
 import { UnauthorizedError } from "../errors";
 import { createLogger } from "../logger";
-import { AuthenticatedRequest } from "../types";
+import { TenantAuthenticatedRequest } from "../types";
+import { setTenantContext } from "../../plugins/tenantPlugin";
 
 const logger = createLogger("auth-middleware");
 
+/**
+ * Authentication Middleware
+ *
+ * This middleware:
+ * 1. Verifies JWT token from Authorization header
+ * 2. Fetches user from database
+ * 3. Attaches user to req.user
+ * 4. Sets tenant context from user's tenantId for database isolation
+ *
+ * Usage: Apply to all routes that need authentication
+ */
 export const authMiddleware = async (
   req: Request,
   res: Response,
@@ -19,21 +31,45 @@ export const authMiddleware = async (
       : null;
 
     if (!token) {
-      throw new UnauthorizedError("Access token is required"); // ENSURE: Message matches test
+      throw new UnauthorizedError("Access token is required");
     }
 
     // Verify token
     const decodedUser = authService.verifyToken(token);
 
     if (!decodedUser || !decodedUser._id) {
-      throw new UnauthorizedError("Invalid access token"); // ENSURE: Message matches test
+      throw new UnauthorizedError("Invalid access token");
     }
 
     // Get full user data from database
     const user = await userService.getUserById(decodedUser._id.toString());
 
+    if (!user) {
+      throw new UnauthorizedError("User not found");
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedError("User account is inactive");
+    }
+
     // Attach user to request object
-    (req as AuthenticatedRequest).user = user;
+    (req as TenantAuthenticatedRequest).user = user;
+
+    // CRITICAL: Set tenant context for database isolation
+    // This ensures all subsequent database queries are automatically
+    // filtered by the user's tenantId via the tenantIsolationPlugin
+    await new Promise<void>((resolve) => {
+      setTenantContext(user.tenantId)(req, res, () => resolve());
+    });
+
+    // Also attach tenantId directly for convenience
+    (req as TenantAuthenticatedRequest).tenantId = user.tenantId;
+
+    logger.debug("User authenticated", {
+      userId: user._id.toString(),
+      tenantId: user.tenantId,
+      email: user.email,
+    });
 
     next();
   } catch (error) {

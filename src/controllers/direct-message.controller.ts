@@ -1,5 +1,5 @@
 import { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../common/types/auth.type";
+import { TenantAuthenticatedRequest } from "../common/types/auth.type";
 import { directMessageService } from "../services/direct-message.service";
 import { createLogger } from "../common/logger";
 import { z } from "zod";
@@ -116,7 +116,7 @@ const editMessageSchema = z
 
 export class DirectMessageController {
   static async getDirectMessages(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -137,7 +137,7 @@ export class DirectMessageController {
   }
 
   static async getDirectMessageById(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -159,7 +159,7 @@ export class DirectMessageController {
   }
 
   static async getMessages(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -195,7 +195,7 @@ export class DirectMessageController {
   }
 
   static async sendMessage(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -271,7 +271,7 @@ export class DirectMessageController {
   }
 
   static async getUnreadCounts(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -291,7 +291,7 @@ export class DirectMessageController {
   }
 
   static async markAsRead(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -313,7 +313,7 @@ export class DirectMessageController {
 
   // New endpoint to get rich content statistics
   static async getRichContentStats(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -337,7 +337,7 @@ export class DirectMessageController {
   }
 
   static async editMessage(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {

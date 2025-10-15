@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { AuthenticatedRequest } from "../../common/types";
+import { TenantAuthenticatedRequest } from "../../common/types";
 import { createLogger } from "../../common/logger";
 import { ErrorHandler, ValidationError } from "../../common/errors";
 import { PresenceStatus } from "../presence-manager";
@@ -14,7 +14,7 @@ export class PresenceController {
   /**
    * Get current user's presence status
    */
-  static async getMyPresence(req: AuthenticatedRequest, res: Response) {
+  static async getMyPresence(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
       const serviceLocator = ServiceLocator.getInstance();
@@ -39,7 +39,7 @@ export class PresenceController {
   /**
    * Update current user's status
    */
-  static async updateMyStatus(req: AuthenticatedRequest, res: Response) {
+  static async updateMyStatus(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
       const { status } = req.body;
@@ -64,7 +64,7 @@ export class PresenceController {
    * Get presence status of specific users
    */
 
-  static async getBulkPresence(req: AuthenticatedRequest, res: Response) {
+  static async getBulkPresence(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const { userIds } = req.body;
       if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -93,7 +93,7 @@ export class PresenceController {
   /**
    * Get online users (with pagination)
    */
-  static async getOnlineUsers(req: AuthenticatedRequest, res: Response) {
+  static async getOnlineUsers(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
       const cursor = req.query.cursor as string | undefined;
@@ -114,7 +114,7 @@ export class PresenceController {
    */
 
   static async getConnectionsPresence(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
   ) {
     try {
@@ -162,7 +162,7 @@ export class PresenceController {
   /**
    * Get user's presence history (for analytics)
    */
-  static async getPresenceHistory(req: AuthenticatedRequest, res: Response) {
+  static async getPresenceHistory(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -202,7 +202,7 @@ export class PresenceController {
   /**
    * Get presence analytics for current user
    */
-  static async getPresenceAnalytics(req: AuthenticatedRequest, res: Response) {
+  static async getPresenceAnalytics(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
       const startDate = req.query.startDate
@@ -234,7 +234,7 @@ export class PresenceController {
   /**
    * Add a connection
    */
-  static async addConnection(req: AuthenticatedRequest, res: Response) {
+  static async addConnection(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
       const { connectionId, type, channelId, directMessageId } = req.body;
@@ -266,7 +266,7 @@ export class PresenceController {
   /**
    * Remove a connection
    */
-  static async removeConnection(req: AuthenticatedRequest, res: Response) {
+  static async removeConnection(req: TenantAuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
       const { connectionId } = req.params;
@@ -292,7 +292,7 @@ export class PresenceController {
   /**
    * Get presence statistics (admin only)
    */
-  static async getPresenceStats(req: AuthenticatedRequest, res: Response) {
+  static async getPresenceStats(req: TenantAuthenticatedRequest, res: Response) {
     try {
       // TODO: Check if user is admin would have to add roles in the model
       //   if (!req.user.isAdmin) {
@@ -314,7 +314,7 @@ export class PresenceController {
    * Cleanup old presence history (admin only)
    */
   static async cleanupPresenceHistory(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
   ) {
     try {
@@ -343,7 +343,7 @@ export class PresenceController {
   /**
    * Get active sessions (admin only)
    */
-  static async getActiveSessions(req: AuthenticatedRequest, res: Response) {
+  static async getActiveSessions(req: TenantAuthenticatedRequest, res: Response) {
     try {
       // Check if user is admin
       //   if (!req.user.isAdmin) {

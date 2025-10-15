@@ -1,5 +1,5 @@
 import { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../common/types/auth.type";
+import { TenantAuthenticatedRequest } from "../common/types/auth.type";
 import { messageReactionService } from "../services/message-reaction.service";
 import { createLogger } from "../common/logger";
 import { z } from "zod";
@@ -13,7 +13,7 @@ const reactionSchema = z.object({
 
 export class MessageReactionController {
   static async addReaction(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -53,7 +53,7 @@ export class MessageReactionController {
     }
   }
   static async removeReaction(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -83,7 +83,7 @@ export class MessageReactionController {
   }
 
   static async getReactions(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {

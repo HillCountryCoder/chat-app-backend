@@ -1,8 +1,8 @@
-import { Response, NextFunction } from "express";
+import { Response } from "express";
 import crypto from "crypto";
 import { TenantService } from "../../services/tenant.service";
 import { User } from "../../models/user.model";
-import { setTenantContext } from "../../plugins/tenantPlugin";
+import { runInTenantContext } from "../../plugins/tenantPlugin";
 import { TenantAuthenticatedRequest } from "../types/auth.type";
 
 interface TenantTokenPayload {
@@ -11,40 +11,46 @@ interface TenantTokenPayload {
   name: string;
   avatarUrl?: string;
   tenantId: string;
+  externalSystem: string; // 'wnp', 'shopify', etc. - DYNAMIC!
   timestamp: number;
   nonce: string;
   iss: string; // Issuer
   aud: string; // Audience
-  exp: number; // Expiry timestamp
+  exp: number; // Expiry timestamp (in seconds)
 }
 
 /**
- * Middleware to verify SSO token from parent app (e.g., WNP)
- * and auto-create/sync user in chat database
+ * SSO Authentication Middleware
  *
- * This middleware:
- * 1. Verifies the JWT signature using tenant's shared secret
- * 2. Validates token expiry and structure
- * 3. Checks origin against tenant's allowed origins
- * 4. Auto-creates or syncs user in chat database
- * 5. Attaches tenant context to request
+ * This is a TERMINAL middleware - it sends a response and does NOT call next()
+ *
+ * Purpose: Verify SSO token from parent app and return a session token
+ *
+ * Flow:
+ * 1. Parent app POSTs to /api/tenants/sso/init with signed token
+ * 2. This middleware verifies signature, creates/syncs user
+ * 3. Returns sessionToken for client to use in subsequent requests
+ * 4. Client uses sessionToken with normal authMiddleware for all other API calls
+ *
+ * @param req - Request with token and signature in body
+ * @param res - Response object
+ * @param next - NextFunction (not used - this is terminal middleware)
  */
 export const verifySSOToken = async (
   req: TenantAuthenticatedRequest,
   res: Response,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  next: NextFunction,
 ) => {
   try {
     const { token, signature } = req.body;
 
+    // 1. Validate request has required fields
     if (!token || !signature) {
       return res.status(400).json({
         error: "Missing token or signature",
       });
     }
 
-    // 1. Decode token payload
+    // 2. Decode token payload
     let payload: TenantTokenPayload;
     try {
       const decodedStr = Buffer.from(token, "base64").toString("utf-8");
@@ -54,18 +60,25 @@ export const verifySSOToken = async (
       return res.status(400).json({ error: "Invalid token format" });
     }
 
-    // 2. Validate token structure
-    if (!payload.tenantId || !payload.tenantUserId || !payload.email) {
-      return res.status(400).json({ error: "Invalid token payload" });
+    // 3. Validate token structure
+    if (
+      !payload.tenantId ||
+      !payload.tenantUserId ||
+      !payload.email ||
+      !payload.externalSystem
+    ) {
+      return res.status(400).json({
+        error: "Invalid token payload - missing required fields",
+      });
     }
 
-    // 3. Check token expiry
+    // 4. Check token expiry
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp && payload.exp < now) {
       return res.status(401).json({ error: "Token expired" });
     }
 
-    // 4. Get tenant and verify signature
+    // 5. Get tenant and verify it's active
     const tenant = await TenantService.getTenantWithSecret(payload.tenantId);
 
     if (!tenant) {
@@ -77,7 +90,7 @@ export const verifySSOToken = async (
       return res.status(403).json({ error: "Tenant not active" });
     }
 
-    // Verify HMAC signature
+    // 6. Verify HMAC signature
     const expectedSignature = crypto
       .createHmac("sha256", tenant.sharedSecret)
       .update(token)
@@ -98,7 +111,7 @@ export const verifySSOToken = async (
       return res.status(401).json({ error: "Invalid signature" });
     }
 
-    // 5. Verify origin
+    // 7. Verify origin
     const origin = req.headers.origin || req.headers.referer;
 
     if (
@@ -113,56 +126,58 @@ export const verifySSOToken = async (
       return res.status(403).json({ error: "Origin not allowed" });
     }
 
-    // 6. Set tenant context for database operations
-    await new Promise<void>((resolve) => {
-      setTenantContext(tenant.tenantId)(req, res, () => resolve());
-    });
-
-    // 7. Find or create user in Chat DB
-    let chatUser = await User.findOne({
-      tenantId: tenant.tenantId,
-      externalId: payload.tenantUserId,
-      externalSystem: "wnp",
-    });
-
-    if (!chatUser) {
-      // Auto-create user on first login
-      chatUser = await User.create({
+    // 8. Find or create user in Chat DB (within tenant context)
+    const chatUser = await runInTenantContext(tenant.tenantId, async () => {
+      let user = await User.findOne({
         tenantId: tenant.tenantId,
         externalId: payload.tenantUserId,
-        externalSystem: "wnp",
-        email: payload.email,
-        username:
-          payload.email.split("@")[0] + "_" + payload.tenantUserId.slice(0, 6),
-        displayName: payload.name,
-        avatarUrl: payload.avatarUrl,
-        isActive: true,
-        emailVerified: true, // Trust parent app's verification
-        // No passwordHash for federated users
+        externalSystem: payload.externalSystem, // Dynamic!
       });
 
-      console.log(
-        "✅ Auto-created chat user for external user:",
-        payload.tenantUserId,
-      );
-    } else {
-      // Update user info in case it changed in parent app
-      chatUser.displayName = payload.name;
-      chatUser.email = payload.email;
-      chatUser.avatarUrl = payload.avatarUrl;
-      chatUser.isActive = true;
-      await chatUser.save();
+      if (!user) {
+        // Auto-create user on first login
+        user = await User.create({
+          tenantId: tenant.tenantId,
+          externalId: payload.tenantUserId,
+          externalSystem: payload.externalSystem, // Dynamic!
+          email: payload.email,
+          username:
+            payload.email.split("@")[0] +
+            "_" +
+            payload.tenantUserId.slice(0, 6),
+          displayName: payload.name,
+          avatarUrl: payload.avatarUrl,
+          isActive: true,
+          emailVerified: true, // Trust parent app's verification
+          // No passwordHash for federated users
+        });
 
-      console.log(
-        "✅ Synced chat user data from external system:",
-        payload.tenantUserId,
-      );
-    }
+        console.log(
+          `✅ Auto-created chat user for ${payload.externalSystem} user:`,
+          payload.tenantUserId,
+        );
+      } else {
+        // Update user info in case it changed in parent app
+        user.displayName = payload.name;
+        user.email = payload.email;
+        user.avatarUrl = payload.avatarUrl;
+        user.isActive = true;
+        await user.save();
 
-    // 8. Generate chat session token
+        console.log(
+          `✅ Synced chat user data from ${payload.externalSystem}:`,
+          payload.tenantUserId,
+        );
+      }
+
+      return user;
+    });
+
+    // 9. Generate chat session token
     const sessionToken = crypto.randomBytes(32).toString("hex");
 
-    // TODO: Store in Redis (1 hour expiry)
+    // 10. Store session in Redis (1 hour expiry)
+    // TODO: Implement Redis storage
     // await redis.setex(
     //   `chat_session:${sessionToken}`,
     //   3600,
@@ -170,24 +185,16 @@ export const verifySSOToken = async (
     //     tenantId: tenant.tenantId,
     //     userId: chatUser._id.toString(),
     //     email: chatUser.email,
-    //     externalId: payload.tenantUserId
+    //     externalId: payload.tenantUserId,
+    //     externalSystem: payload.externalSystem,
     //   })
     // );
 
-    // 9. Attach context to request for next middleware
-    req.tenantContext = {
-      tenantId: tenant.tenantId,
-      userId: chatUser._id.toString(),
-      email: chatUser.email,
-      displayName: chatUser.displayName,
-    };
-    req.tenantId = tenant.tenantId;
-    req.user = chatUser;
-
-    // 10. Send response with session token
+    // 11. Send response with session token
+    // Client will use this sessionToken with authMiddleware for all subsequent requests
     res.json({
       success: true,
-      sessionToken,
+      sessionToken, // Client stores this and sends it in Authorization header
       user: {
         id: chatUser._id.toString(),
         email: chatUser.email,

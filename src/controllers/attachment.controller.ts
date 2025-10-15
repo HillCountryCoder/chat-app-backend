@@ -1,11 +1,12 @@
 import { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../common/types/auth.type";
+import { TenantAuthenticatedRequest } from "../common/types/auth.type";
 import { attachmentService } from "../services/attachment.service";
 import { createLogger } from "../common/logger";
 import { ValidationError, UnauthorizedError } from "../common/errors";
 import { z } from "zod";
 import { emitAttachmentStatusUpdate } from "../socket/attachment.handler";
 import { getSocketServer } from "../socket";
+import { tenantContext } from "../plugins/tenantPlugin";
 const logger = createLogger("attachment-controller");
 
 // Validation schemas
@@ -37,7 +38,7 @@ const completeUploadSchema = z.object({
 
 export class AttachmentController {
   static async generateUploadUrl(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -89,7 +90,7 @@ export class AttachmentController {
   }
 
   static async completeUpload(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -119,11 +120,16 @@ export class AttachmentController {
         userId,
         ...validatedData,
       });
-
+      const context = tenantContext.getStore();
+      if (!context?.tenantId) {
+        throw new Error("Tenant context is missing");
+      }
+      const tenantId = context?.tenantId;
       const socketServer = getSocketServer();
       if (socketServer) {
         emitAttachmentStatusUpdate(
           socketServer,
+          tenantId,
           attachment._id.toString(),
           attachment.uploadedBy.toString(),
           {
@@ -145,7 +151,7 @@ export class AttachmentController {
   // 🔥 REMOVED: updateStatus method - no longer needed
 
   static async getDownloadUrl(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -168,7 +174,7 @@ export class AttachmentController {
   }
 
   static async deleteAttachment(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
@@ -191,7 +197,7 @@ export class AttachmentController {
   }
 
   static async getUserAttachments(
-    req: AuthenticatedRequest,
+    req: TenantAuthenticatedRequest,
     res: Response,
     next: NextFunction,
   ) {
