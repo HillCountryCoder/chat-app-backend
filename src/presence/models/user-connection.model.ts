@@ -1,9 +1,11 @@
 // src/presence/models/user-connection.model.ts - UPDATED SIMPLIFIED VERSION
 import mongoose, { Schema, Document } from "mongoose";
 import { CONNECTION_TYPE } from "../constants";
+import { tenantIsolationPlugin } from "../../plugins/tenantPlugin";
 
 export interface IUserConnection extends Document {
   userId: string;
+  tenantId: string;
   connectionId: string;
   connectionType:
     | CONNECTION_TYPE.DIRECT_MESSAGE
@@ -19,6 +21,12 @@ const UserConnectionSchema = new Schema<IUserConnection>(
     userId: {
       type: String,
       required: true,
+      index: true,
+    },
+    tenantId: {
+      type: String,
+      required: true,
+      index: true,
     },
     connectionId: {
       type: String,
@@ -64,6 +72,31 @@ UserConnectionSchema.index(
   { unique: true, sparse: true, name: "unique_dm_connection" },
 );
 
+// multi-tenant isolation tenant indices
+UserConnectionSchema.index({ tenantId: 1, userId: 1, connectionType: 1 });
+UserConnectionSchema.index({ tenantId: 1, connectionId: 1, connectionType: 1 });
+UserConnectionSchema.index({ tenantId: 1, channelId: 1 }, { sparse: true });
+UserConnectionSchema.index(
+  { tenantId: 1, directMessageId: 1 },
+  { sparse: true },
+);
+
+UserConnectionSchema.index(
+  { tenantId: 1, userId: 1, connectionId: 1, connectionType: 1, channelId: 1 },
+  { unique: true, sparse: true, name: "unique_channel_connection" },
+);
+
+UserConnectionSchema.index(
+  {
+    tenantId: 1,
+    userId: 1,
+    connectionId: 1,
+    connectionType: 1,
+    directMessageId: 1,
+  },
+  { unique: true, sparse: true, name: "unique_dm_connection" },
+);
+
 // Validation to ensure contextId is provided based on type
 UserConnectionSchema.pre("save", function (next) {
   if (this.connectionType === "channel_member" && !this.channelId) {
@@ -79,6 +112,9 @@ UserConnectionSchema.pre("save", function (next) {
     next();
   }
 });
+
+// tenant isolation plugin
+UserConnectionSchema.plugin(tenantIsolationPlugin);
 
 export const UserConnection = mongoose.model<IUserConnection>(
   "UserConnection",

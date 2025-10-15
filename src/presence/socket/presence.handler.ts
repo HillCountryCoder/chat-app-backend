@@ -34,6 +34,7 @@ export const registerPresenceHandlers = (
   io: Server,
   socket: AuthenticatedSocket,
   userId: string,
+  tenantId: string,
 ) => {
   const serviceLocator = ServiceLocator.getInstance();
 
@@ -50,12 +51,11 @@ export const registerPresenceHandlers = (
   }
 
   let sessionId: string | null = null;
-//   let heartbeatInterval: NodeJS.Timeout | null = null;
+  //   let heartbeatInterval: NodeJS.Timeout | null = null;
 
   socket.on("authenticate_presence", async (data, callback) => {
     try {
       logger.event(socket.id, "authenticate_presence", { userId });
-
       const deviceInfo = {
         type: "web" as const,
         userAgent: socket.handshake.headers["user-agent"],
@@ -63,7 +63,12 @@ export const registerPresenceHandlers = (
       };
       // Use the status from client or default to ONLINE
       const initialStatus = data?.status || PRESENCE_STATUS.ONLINE;
-      await presenceManager.processHeartbeat(userId, initialStatus, deviceInfo);
+      await presenceManager.processHeartbeat(
+        userId,
+        tenantId,
+        initialStatus,
+        deviceInfo,
+      );
 
       sessionId = await PresenceHistoryService.recordSession(
         userId,
@@ -71,17 +76,17 @@ export const registerPresenceHandlers = (
         deviceInfo,
       );
 
-    //   heartbeatInterval = setInterval(async () => {
-    //     try {
-    //       await presenceManager.processHeartbeat(
-    //         userId,
-    //         initialStatus,
-    //         deviceInfo,
-    //       );
-    //     } catch (error) {
-    //       logger.error(socket.id, error as Error);
-    //     }
-    //   }, 30000);
+      //   heartbeatInterval = setInterval(async () => {
+      //     try {
+      //       await presenceManager.processHeartbeat(
+      //         userId,
+      //         initialStatus,
+      //         deviceInfo,
+      //       );
+      //     } catch (error) {
+      //       logger.error(socket.id, error as Error);
+      //     }
+      //   }, 30000);
       socket.join(`presence:${userId}`);
       if (typeof callback === "function") {
         callback({
@@ -116,6 +121,7 @@ export const registerPresenceHandlers = (
       };
       await presenceManager.processHeartbeat(
         userId,
+        tenantId,
         data?.status || PRESENCE_STATUS.ONLINE,
         deviceInfo,
       );
@@ -164,6 +170,7 @@ export const registerPresenceHandlers = (
       };
       await presenceManager.processHeartbeat(
         userId,
+        tenantId,
         validateData.status,
         deviceInfo,
       );
@@ -215,6 +222,7 @@ export const registerPresenceHandlers = (
 
       const presenceMap = await presenceManager.getBulkPresence(
         validatedData.userIds,
+        tenantId,
       );
       const result: Record<string, PresenceStatus> = {};
 
@@ -264,7 +272,11 @@ export const registerPresenceHandlers = (
       const limit = validatedData.limit || 20;
       const cursor = validatedData.cursor || "0";
 
-      const result = await presenceManager.getOnlineUsers(limit, cursor);
+      const result = await presenceManager.getOnlineUsers(
+        limit,
+        cursor,
+        tenantId,
+      );
 
       if (typeof callback === "function") {
         callback({
@@ -303,7 +315,7 @@ export const registerPresenceHandlers = (
       logger.event(socket.id, "disconnect", { reason, userId });
 
       // Set user offline
-      await presenceManager.setUserOffline(userId);
+      await presenceManager.setUserOffline(userId, tenantId);
 
       // End session
       if (sessionId) {
@@ -311,9 +323,9 @@ export const registerPresenceHandlers = (
       }
 
       // Clear heartbeat interval
-    //   if (heartbeatInterval) {
-    //     clearInterval(heartbeatInterval);
-    //   }
+      //   if (heartbeatInterval) {
+      //     clearInterval(heartbeatInterval);
+      //   }
 
       logger.event(socket.id, "presence_disconnected", { userId });
     } catch (error) {

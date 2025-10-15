@@ -6,6 +6,7 @@ import { PresenceStatus } from "../presence-manager";
 import { ConnectionService, PresenceHistoryService } from "../services";
 import { CONNECTION_TYPE } from "../constants";
 import { ServiceLocator } from "../../common/service-locator";
+import { runInTenantContext } from "../../plugins/tenantPlugin";
 
 const logger = createLogger("presence-controller");
 const errorHandler = new ErrorHandler(logger);
@@ -16,20 +17,29 @@ export class PresenceController {
    */
   static async getMyPresence(req: TenantAuthenticatedRequest, res: Response) {
     try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new ValidationError("Tenant ID is missing in user context");
+      }
+
       const userId = req.user?.id;
       const serviceLocator = ServiceLocator.getInstance();
       const presenceManager = serviceLocator.getPresenceManager();
-
-      const presence = await presenceManager.getUserPresence(userId);
-      if (!presence) {
-        res.json({
+      return runInTenantContext(tenantId, async () => {
+        const presence = await presenceManager.getUserPresence(
           userId,
-          status: "offline",
-          lastSeen: null,
-        });
-      } else {
-        res.json(presence);
-      }
+          tenantId,
+        );
+        if (!presence) {
+          res.json({
+            userId,
+            status: "offline",
+            lastSeen: null,
+          });
+        } else {
+          res.json(presence);
+        }
+      });
     } catch (error) {
       if (error instanceof Error) {
         errorHandler.handleError(error, res);
@@ -43,17 +53,22 @@ export class PresenceController {
     try {
       const userId = req.user?.id;
       const { status } = req.body;
-
-      if (!statuses.includes(status)) {
-        throw new ValidationError(
-          "Invalid status. Must be online, away, or busy",
-        );
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new ValidationError("Tenant ID is missing in user context");
       }
-      const serviceLocator = ServiceLocator.getInstance();
-      const presenceManager = serviceLocator.getPresenceManager();
-      await presenceManager.processHeartbeat(userId, status);
+      return runInTenantContext(tenantId, async () => {
+        if (!statuses.includes(status)) {
+          throw new ValidationError(
+            "Invalid status. Must be online, away, or busy",
+          );
+        }
+        const serviceLocator = ServiceLocator.getInstance();
+        const presenceManager = serviceLocator.getPresenceManager();
+        await presenceManager.processHeartbeat(userId, tenantId, status);
 
-      res.json({ success: true });
+        res.json({ success: true });
+      });
     } catch (error) {
       if (error instanceof Error) {
         errorHandler.handleError(error, res);
@@ -73,16 +88,24 @@ export class PresenceController {
       if (userIds.length > 100) {
         throw new ValidationError("Maximum 100 users per request");
       }
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new ValidationError("Tenant ID is missing in user context");
+      }
+      return runInTenantContext(tenantId, async () => {
+        const serviceLocator = ServiceLocator.getInstance();
+        const presenceManager = serviceLocator.getPresenceManager();
+        const presenceMap = await presenceManager.getBulkPresence(
+          userIds,
+          tenantId,
+        );
 
-      const serviceLocator = ServiceLocator.getInstance();
-      const presenceManager = serviceLocator.getPresenceManager();
-      const presenceMap = await presenceManager.getBulkPresence(userIds);
-
-      const result: Record<string, PresenceStatus> = {};
-      presenceMap.forEach((presence, userId) => {
-        result[userId] = presence;
+        const result: Record<string, PresenceStatus> = {};
+        presenceMap.forEach((presence, userId) => {
+          result[userId] = presence;
+        });
+        res.json(result);
       });
-      res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         errorHandler.handleError(error, res);
@@ -97,12 +120,21 @@ export class PresenceController {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
       const cursor = req.query.cursor as string | undefined;
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new ValidationError("Tenant ID is missing in user context");
+      }
+      await runInTenantContext(tenantId, async () => {
+        const serviceLocator = ServiceLocator.getInstance();
+        const presenceManager = serviceLocator.getPresenceManager();
+        const onlineUsers = await presenceManager.getOnlineUsers(
+          limit,
+          cursor,
+          tenantId,
+        );
 
-      const serviceLocator = ServiceLocator.getInstance();
-      const presenceManager = serviceLocator.getPresenceManager();
-      const onlineUsers = await presenceManager.getOnlineUsers(limit, cursor);
-
-      res.json(onlineUsers);
+        res.json(onlineUsers);
+      });
     } catch (error) {
       if (error instanceof Error) {
         errorHandler.handleError(error, res);
@@ -139,19 +171,27 @@ export class PresenceController {
       if (connectionIds.length === 0) {
         res.json({});
       }
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new ValidationError("Tenant ID is missing in user context");
+      }
+      return runInTenantContext(tenantId, async () => {
+        // Get presence for all connections
+        const serviceLocator = ServiceLocator.getInstance();
+        const presenceManager = serviceLocator.getPresenceManager();
+        const presenceMap = await presenceManager.getBulkPresence(
+          connectionIds,
+          tenantId,
+        );
 
-      // Get presence for all connections
-      const serviceLocator = ServiceLocator.getInstance();
-      const presenceManager = serviceLocator.getPresenceManager();
-      const presenceMap = await presenceManager.getBulkPresence(connectionIds);
+        // Convert Map to object
+        const result: Record<string, PresenceStatus> = {};
+        presenceMap.forEach((presence, connectionId) => {
+          result[connectionId] = presence;
+        });
 
-      // Convert Map to object
-      const result: Record<string, PresenceStatus> = {};
-      presenceMap.forEach((presence, connectionId) => {
-        result[connectionId] = presence;
+        res.json(result);
       });
-
-      res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         errorHandler.handleError(error, res);
@@ -162,7 +202,10 @@ export class PresenceController {
   /**
    * Get user's presence history (for analytics)
    */
-  static async getPresenceHistory(req: TenantAuthenticatedRequest, res: Response) {
+  static async getPresenceHistory(
+    req: TenantAuthenticatedRequest,
+    res: Response,
+  ) {
     try {
       const userId = req.user?.id;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -202,7 +245,10 @@ export class PresenceController {
   /**
    * Get presence analytics for current user
    */
-  static async getPresenceAnalytics(req: TenantAuthenticatedRequest, res: Response) {
+  static async getPresenceAnalytics(
+    req: TenantAuthenticatedRequest,
+    res: Response,
+  ) {
     try {
       const userId = req.user?.id;
       const startDate = req.query.startDate
@@ -266,7 +312,10 @@ export class PresenceController {
   /**
    * Remove a connection
    */
-  static async removeConnection(req: TenantAuthenticatedRequest, res: Response) {
+  static async removeConnection(
+    req: TenantAuthenticatedRequest,
+    res: Response,
+  ) {
     try {
       const userId = req.user?.id;
       const { connectionId } = req.params;
@@ -292,16 +341,23 @@ export class PresenceController {
   /**
    * Get presence statistics (admin only)
    */
-  static async getPresenceStats(req: TenantAuthenticatedRequest, res: Response) {
+  static async getPresenceStats(
+    req: TenantAuthenticatedRequest,
+    res: Response,
+  ) {
     try {
       // TODO: Check if user is admin would have to add roles in the model
       //   if (!req.user.isAdmin) {
       //     return res.status(403).json({ error: "Admin access required" });
       //   }
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new Error("Tenant is not presence in context");
+      }
 
       const serviceLocator = ServiceLocator.getInstance();
       const presenceManager = serviceLocator.getPresenceManager();
-      const stats = await presenceManager.getPresenceStats();
+      const stats = await presenceManager.getPresenceStats(tenantId);
 
       res.json(stats);
     } catch (error) {
@@ -343,7 +399,10 @@ export class PresenceController {
   /**
    * Get active sessions (admin only)
    */
-  static async getActiveSessions(req: TenantAuthenticatedRequest, res: Response) {
+  static async getActiveSessions(
+    req: TenantAuthenticatedRequest,
+    res: Response,
+  ) {
     try {
       // Check if user is admin
       //   if (!req.user.isAdmin) {

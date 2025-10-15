@@ -103,7 +103,7 @@ export const initializeSocketServer = (server: HttpServer) => {
       registerChannelHandlers(io, socket, userId, tenantId);
       registerMessageReactionHandlers(io, socket, userId, tenantId);
       registerAttachmentHandlers(io, socket, userId, tenantId);
-      registerPresenceHandlers(io, socket, userId);
+      registerPresenceHandlers(io, socket, userId, tenantId);
 
       // Send initial unread counts (within tenant context)
       async function sendInitialUnreadCounts() {

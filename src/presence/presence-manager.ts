@@ -12,12 +12,14 @@ export type DeviceInfo = {
 };
 export interface PresenceStatus {
   userId: string;
+  tenantId: string;
   status: PRESENCE_STATUS;
   lastSeen: Date;
   deviceInfo?: DeviceInfo;
 }
 export interface PresenceUpdate {
   userId: string;
+  tenantId: string;
   connectionStatus: "online" | "offline";
   userStatus?: PRESENCE_STATUS;
   timestamp: Date;
@@ -28,15 +30,16 @@ export class PresenceManager extends EventEmitter {
   private heartbeatInterval: number = 30000; // 30 seconds
   private timeoutWindow: number = 60000; // 60 seconds
   private cleanupInterval: NodeJS.Timeout;
-
+  private tenantId: string;
   private heartbeatTimers: Map<string, NodeJS.Timeout> = new Map();
 
-  constructor(redisClient: ReturnType<typeof createClient>) {
+  constructor(redisClient: ReturnType<typeof createClient>, tenantId: string) {
     super();
     this.redis = redisClient;
+    this.tenantId = tenantId;
 
     this.cleanupInterval = setInterval(() => {
-      this.cleanupExpiredPresence();
+      this.cleanupExpiredPresenceForAllTenants();
     }, 60000);
   }
 
@@ -45,18 +48,20 @@ export class PresenceManager extends EventEmitter {
    */
   async processHeartbeat(
     userId: string,
+    tenantId: string,
     status: PRESENCE_STATUS,
     deviceInfo?: DeviceInfo,
   ): Promise<void> {
     try {
-      const presenceKey = `presence:${userId}`;
+      const presenceKey = `presence:${tenantId}:${userId}`;
       const now = new Date();
 
-      const currentPresence = await this.getUserPresence(userId);
+      const currentPresence = await this.getUserPresence(userId, tenantId);
       const wasOffline =
         !currentPresence || currentPresence.status === "offline";
       const presenceData: PresenceStatus = {
         userId,
+        tenantId,
         status,
         lastSeen: now,
         deviceInfo,
@@ -71,7 +76,7 @@ export class PresenceManager extends EventEmitter {
       if (wasOffline) {
         logger.info(`User ${userId} came online`);
         this.emit("userOnline", { userId, status, timestamp: now });
-        await this.broadcastPresenceChange(userId, "online", status);
+        await this.broadcastPresenceChange(userId, tenantId, "online", status);
       } else {
         // Just update status if it changed
         if (currentPresence && currentPresence.status !== status) {
@@ -81,11 +86,16 @@ export class PresenceManager extends EventEmitter {
             newStatus: status,
             timestamp: now,
           });
-          await this.broadcastPresenceChange(userId, "online", status);
+          await this.broadcastPresenceChange(
+            userId,
+            this.tenantId,
+            "online",
+            status,
+          );
         }
       }
 
-      this.resetOfflineTimer(userId);
+      this.resetOfflineTimer(userId, this.tenantId);
     } catch (error) {
       logger.error("Error processing heartbeat:", error);
     }
@@ -93,9 +103,12 @@ export class PresenceManager extends EventEmitter {
   /**
    * Get user's current presence status
    */
-  async getUserPresence(userId: string): Promise<PresenceStatus | null> {
+  async getUserPresence(
+    userId: string,
+    tenantId: string,
+  ): Promise<PresenceStatus | null> {
     try {
-      const presenceKey = `presence:${userId}`;
+      const presenceKey = `presence:${tenantId}:${userId}`;
       const data = await this.redis.get(presenceKey);
       if (!data) {
         return null;
@@ -117,13 +130,14 @@ export class PresenceManager extends EventEmitter {
 
   async getBulkPresence(
     userIds: string[],
+    tenantId: string,
   ): Promise<Map<string, PresenceStatus>> {
     const presenceMap = new Map<string, PresenceStatus>();
 
     try {
       const multi = this.redis.multi();
       userIds.forEach((userId) => {
-        multi.get(`presence:${userId}`);
+        multi.get(`presence:${tenantId}:${userId}`);
       });
 
       const results = await multi.exec();
@@ -151,10 +165,10 @@ export class PresenceManager extends EventEmitter {
    * Mark user as offline (called when socket disconnects)
    */
 
-  async setUserOffline(userId: string): Promise<void> {
+  async setUserOffline(userId: string, tenantId: string): Promise<void> {
     try {
-      const presenceKey = `presence:${userId}`;
-      const currentPresence = await this.getUserPresence(userId);
+      const presenceKey = `presence:${tenantId}:${userId}`;
+      const currentPresence = await this.getUserPresence(userId, tenantId);
 
       if (currentPresence && currentPresence.status !== "offline") {
         const offlinePresence: PresenceStatus = {
@@ -174,7 +188,7 @@ export class PresenceManager extends EventEmitter {
         this.emit("userOffline", { userId, timestamp: new Date() });
 
         // Broadcast to user's connections
-        await this.broadcastPresenceChange(userId, "offline");
+        await this.broadcastPresenceChange(userId, tenantId, "offline");
 
         // Clear offline timer
         this.clearOfflineTimer(userId);
@@ -187,13 +201,14 @@ export class PresenceManager extends EventEmitter {
   async getOnlineUsers(
     limit: number = 100,
     cursor: string = "0",
+    tenantId: string,
   ): Promise<{
     users: PresenceStatus[];
     nextCursor: string;
   }> {
     try {
       const scanResult = await this.redis.scan(parseInt(cursor), {
-        MATCH: `presence:*`,
+        MATCH: `presence:${tenantId}:*`,
         COUNT: limit,
       });
 
@@ -243,11 +258,11 @@ export class PresenceManager extends EventEmitter {
   /**
    * Reset offline timer for user
    */
-  private resetOfflineTimer(userId: string): void {
+  private resetOfflineTimer(userId: string, tenantId: string): void {
     this.clearOfflineTimer(userId);
 
     const timer = setTimeout(async () => {
-      await this.setUserOffline(userId);
+      await this.setUserOffline(userId, tenantId);
     }, this.timeoutWindow);
     this.heartbeatTimers.set(userId, timer);
     logger.debug(`Reset offline timer for user ${userId}`);
@@ -268,13 +283,15 @@ export class PresenceManager extends EventEmitter {
    */
   private async broadcastPresenceChange(
     userId: string,
+    tenantId: string,
     connectionStatus: "online" | "offline",
     userStatus?: PRESENCE_STATUS,
   ): Promise<void> {
     try {
-      const connections = await this.getUserConnections(userId);
+      const connections = await this.getUserConnections(userId, tenantId);
       const presenceUpdate: PresenceUpdate = {
         userId,
+        tenantId,
         connectionStatus,
         userStatus,
         timestamp: new Date(),
@@ -288,10 +305,13 @@ export class PresenceManager extends EventEmitter {
   /**
    * Get user's connections (friends, contacts, etc.)
    */
-  private async getUserConnections(userId: string): Promise<string[]> {
+  private async getUserConnections(
+    userId: string,
+    tenantId: string,
+  ): Promise<string[]> {
     try {
       const connections = await UserConnection.find(
-        { userId },
+        { userId, tenantId },
         "connectionId",
       ).lean();
       return connections.map((conn) => conn.connectionId);
@@ -303,26 +323,18 @@ export class PresenceManager extends EventEmitter {
   /**
    * Cleanup expired presence entries
    */
-  private async cleanupExpiredPresence(): Promise<void> {
+  private async cleanupExpiredPresenceForAllTenants(): Promise<void> {
     try {
-      const cursor = "0";
-      const scanResult = await this.redis.scan(parseInt(cursor), {
-        MATCH: "presence:*",
+      // Scan for ALL tenant presence keys
+      const scanResult = await this.redis.scan(0, {
+        MATCH: "presence:*:*",
         COUNT: 1000,
       });
-      const keys = scanResult.keys;
 
-      // Add code to handle expired keys
-      if (keys.length > 0) {
-        logger.debug(
-          `Found ${keys.length} presence keys to check for expiration`,
-        );
-        // Process the keys here
-        for (const key of keys) {
-          const ttl = await this.redis.ttl(key);
-          if (ttl === -1) {
-            await this.redis.expire(key, 84600); // Set default expiration to 24 hours
-          }
+      for (const key of scanResult.keys) {
+        const ttl = await this.redis.ttl(key);
+        if (ttl === -1) {
+          await this.redis.expire(key, 86400);
         }
       }
     } catch (error) {
@@ -333,13 +345,13 @@ export class PresenceManager extends EventEmitter {
   /**
    * Get presence statistics for monitoring
    */
-  async getPresenceStats(): Promise<{
+  async getPresenceStats(tenantId: string): Promise<{
     totalOnline: number;
     statusBreakdown: Record<string, number>;
     deviceBreakdown: Record<string, number>;
   }> {
     try {
-      const onlineUsers = await this.getOnlineUsers(1000);
+      const onlineUsers = await this.getOnlineUsers(1000, "0", tenantId);
       const stats = {
         totalOnline: onlineUsers.users.length,
         statusBreakdown: {
