@@ -12,6 +12,7 @@ import {
   RefreshTokenInterface,
 } from "../models/refresh-token.model";
 import rateLimit from "express-rate-limit";
+import { runInTenantContext } from "../plugins/tenantPlugin";
 
 // Add this rate limiter for refresh endpoint
 export const refreshTokenLimiter = rateLimit({
@@ -53,6 +54,7 @@ export class AuthService {
       _id: user._id,
       email: user.email,
       username: user.username,
+      tenantId: user.tenantId,
     } as UserFromToken;
 
     return jwt.sign(payload, env.JWT_SECRET, {
@@ -69,58 +71,64 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<string> {
-    const existingSession = await RefreshToken.findOne({
-      userId: user._id,
-      userAgent: userAgent,
-      ipAddress: ipAddress,
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (existingSession) {
-      this.logger.info("Reusing existing session", {
+    return runInTenantContext(user.tenantId, async () => {
+      const existingSession = await RefreshToken.findOne({
+        tenantId: user.tenantId,
         userId: user._id,
-        sessionId: existingSession._id,
-        rememberMe,
+        userAgent: userAgent,
+        ipAddress: ipAddress,
+        expiresAt: { $gt: new Date() },
       });
 
-      // Update existing session
+      if (existingSession) {
+        this.logger.info("Reusing existing session", {
+          userId: user._id,
+          sessionId: existingSession._id,
+          rememberMe,
+          tenantId: user.tenantId,
+        });
+
+        // Update existing session
+        const expiresIn = rememberMe
+          ? 30 * 24 * 60 * 60 * 1000
+          : 7 * 24 * 60 * 60 * 1000;
+        existingSession.expiresAt = new Date(Date.now() + expiresIn);
+        existingSession.rememberMe = rememberMe;
+        existingSession.lastUsed = new Date();
+        await existingSession.save();
+
+        return existingSession.token;
+      }
+
+      // Generate cryptographically secure random token
+      const tokenValue = crypto.randomBytes(32).toString("hex");
+
       const expiresIn = rememberMe
         ? 30 * 24 * 60 * 60 * 1000
-        : 7 * 24 * 60 * 60 * 1000;
-      existingSession.expiresAt = new Date(Date.now() + expiresIn);
-      existingSession.rememberMe = rememberMe;
-      existingSession.lastUsed = new Date();
-      await existingSession.save();
+        : 7 * 24 * 60 * 60 * 1000; // 30 days or 7 days
+      const expiresAt = new Date(Date.now() + expiresIn);
 
-      return existingSession.token;
-    }
+      // Store in database with rememberMe flag
+      await RefreshToken.create({
+        tenantId: user.tenantId,
+        token: tokenValue,
+        userId: user._id,
+        deviceInfo,
+        ipAddress,
+        userAgent,
+        expiresAt,
+        rememberMe, // Add this field to track original preference
+      });
 
-    // Generate cryptographically secure random token
-    const tokenValue = crypto.randomBytes(32).toString("hex");
+      this.logger.info("New refresh token generated", {
+        userId: user._id,
+        expiresAt,
+        rememberMe,
+        tenantId: user.tenantId,
+      });
 
-    const expiresIn = rememberMe
-      ? 30 * 24 * 60 * 60 * 1000
-      : 7 * 24 * 60 * 60 * 1000; // 30 days or 7 days
-    const expiresAt = new Date(Date.now() + expiresIn);
-
-    // Store in database with rememberMe flag
-    await RefreshToken.create({
-      token: tokenValue,
-      userId: user._id,
-      deviceInfo,
-      ipAddress,
-      userAgent,
-      expiresAt,
-      rememberMe, // Add this field to track original preference
+      return tokenValue;
     });
-
-    this.logger.info("New refresh token generated", {
-      userId: user._id,
-      expiresAt,
-      rememberMe,
-    });
-
-    return tokenValue;
   }
 
   public async generateTokenPair(
@@ -208,82 +216,88 @@ export class AuthService {
       throw new UnauthorizedError("Invalid refresh token");
     }
 
-    try {
-      // Get original rememberMe preference from stored token
-      const originalRememberMe = storedToken.rememberMe || false;
+    return runInTenantContext(user.tenantId, async () => {
+      try {
+        // Get original rememberMe preference from stored token
+        const originalRememberMe = storedToken.rememberMe || false;
 
-      // Generate new token value
-      const newTokenValue = crypto.randomBytes(32).toString("hex");
+        // Generate new token value
+        const newTokenValue = crypto.randomBytes(32).toString("hex");
 
-      // Update the existing record atomically
-      const updateResult = await RefreshToken.updateOne(
-        {
-          _id: storedToken._id,
-          expiresAt: { $gt: new Date() }, // Double-check it's still valid
-        },
-        {
-          token: newTokenValue,
-          lastUsed: new Date(),
-          expiresAt: new Date(
-            Date.now() +
-              (originalRememberMe
-                ? 30 * 24 * 60 * 60 * 1000
-                : 7 * 24 * 60 * 60 * 1000),
-          ),
-        },
-      );
-
-      // If update failed (token expired between checks), throw error
-      if (updateResult.matchedCount === 0) {
-        this.logger.warn("Refresh token expired during update", {
-          token: refreshTokenValue.substring(0, 8) + "...",
-        });
-        throw new UnauthorizedError("Invalid refresh token");
-      }
-
-      // Generate new access token
-      const newAccessToken = this.generateAccessToken(user);
-
-      // Clean up any expired sessions for this user (non-blocking)
-      this.cleanupExpiredSessions(user._id.toString()).catch((err) => {
-        this.logger.warn("Failed to cleanup expired sessions", { error: err });
-      });
-
-      this.logger.info("Access token refreshed successfully", {
-        userId: user._id,
-        rememberMe: originalRememberMe,
-        sessionId: storedToken._id,
-      });
-
-      return {
-        accessToken: newAccessToken,
-        refreshToken: newTokenValue,
-        user,
-        expiresIn: originalRememberMe ? "30d" : "7d",
-        accessTokenExpiresIn: "15m",
-        refreshTokenExpiresIn: originalRememberMe ? "30d" : "7d",
-      };
-    } catch (error) {
-      this.logger.error("Failed to refresh access token", {
-        error: error instanceof Error ? error.message : String(error),
-        userId: user._id,
-        tokenId: storedToken._id,
-      });
-
-      // If it's not already an UnauthorizedError, clean up and throw
-      if (!(error instanceof UnauthorizedError)) {
-        await RefreshToken.deleteOne({ _id: storedToken._id }).catch(
-          (cleanupErr) => {
-            this.logger.warn("Failed to cleanup token after error", {
-              error: cleanupErr,
-            });
+        // Update the existing record atomically
+        const updateResult = await RefreshToken.updateOne(
+          {
+            _id: storedToken._id,
+            expiresAt: { $gt: new Date() }, // Double-check it's still valid
+          },
+          {
+            token: newTokenValue,
+            tenantId: user.tenantId,
+            lastUsed: new Date(),
+            expiresAt: new Date(
+              Date.now() +
+                (originalRememberMe
+                  ? 30 * 24 * 60 * 60 * 1000
+                  : 7 * 24 * 60 * 60 * 1000),
+            ),
           },
         );
-        throw new UnauthorizedError("Invalid refresh token");
-      }
 
-      throw error;
-    }
+        // If update failed (token expired between checks), throw error
+        if (updateResult.matchedCount === 0) {
+          this.logger.warn("Refresh token expired during update", {
+            token: refreshTokenValue.substring(0, 8) + "...",
+          });
+          throw new UnauthorizedError("Invalid refresh token");
+        }
+
+        // Generate new access token
+        const newAccessToken = this.generateAccessToken(user);
+
+        // Clean up any expired sessions for this user (non-blocking)
+        this.cleanupExpiredSessions(user._id.toString()).catch((err) => {
+          this.logger.warn("Failed to cleanup expired sessions", {
+            error: err,
+          });
+        });
+
+        this.logger.info("Access token refreshed successfully", {
+          userId: user._id,
+          tenantId: user.tenantId,
+          rememberMe: originalRememberMe,
+          sessionId: storedToken._id,
+        });
+
+        return {
+          accessToken: newAccessToken,
+          refreshToken: newTokenValue,
+          user,
+          expiresIn: originalRememberMe ? "30d" : "7d",
+          accessTokenExpiresIn: "15m",
+          refreshTokenExpiresIn: originalRememberMe ? "30d" : "7d",
+        };
+      } catch (error) {
+        this.logger.error("Failed to refresh access token", {
+          error: error instanceof Error ? error.message : String(error),
+          userId: user._id,
+          tokenId: storedToken._id,
+        });
+
+        // If it's not already an UnauthorizedError, clean up and throw
+        if (!(error instanceof UnauthorizedError)) {
+          await RefreshToken.deleteOne({ _id: storedToken._id }).catch(
+            (cleanupErr) => {
+              this.logger.warn("Failed to cleanup token after error", {
+                error: cleanupErr,
+              });
+            },
+          );
+          throw new UnauthorizedError("Invalid refresh token");
+        }
+
+        throw error;
+      }
+    });
   }
 
   public async cleanupExpiredSessions(userId?: string): Promise<void> {

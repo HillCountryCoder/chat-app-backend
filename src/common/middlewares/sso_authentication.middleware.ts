@@ -2,8 +2,9 @@ import { Response } from "express";
 import crypto from "crypto";
 import { TenantService } from "../../services/tenant.service";
 import { User } from "../../models/user.model";
-import { runInTenantContext } from "../../plugins/tenantPlugin";
 import { TenantAuthenticatedRequest } from "../types/auth.type";
+import { authService } from "../../services";
+import { runInTenantContext } from "../../plugins/tenantPlugin";
 
 interface TenantTokenPayload {
   tenantUserId: string; // External user ID
@@ -173,28 +174,30 @@ export const verifySSOToken = async (
       return user;
     });
 
-    // 9. Generate chat session token
-    const sessionToken = crypto.randomBytes(32).toString("hex");
+    // 9. Generate chat session token ( already stored in database )
+    const deviceInfo = req.headers["user-agent"] || "Unknown Device";
+    const ipAddress = req.ip || req.socket.remoteAddress || "Unknown IP";
+    const userAgent = req.headers["user-agent"] || "Unknown";
+    const {
+      accessToken,
+      refreshToken,
+      accessTokenExpiresIn,
+      refreshTokenExpiresIn,
+    } = await authService.generateTokenPair(
+      chatUser,
+      false,
+      deviceInfo,
+      ipAddress,
+      userAgent,
+    );
 
-    // 10. Store session in Redis (1 hour expiry)
-    // TODO: Implement Redis storage
-    // await redis.setex(
-    //   `chat_session:${sessionToken}`,
-    //   3600,
-    //   JSON.stringify({
-    //     tenantId: tenant.tenantId,
-    //     userId: chatUser._id.toString(),
-    //     email: chatUser.email,
-    //     externalId: payload.tenantUserId,
-    //     externalSystem: payload.externalSystem,
-    //   })
-    // );
-
-    // 11. Send response with session token
-    // Client will use this sessionToken with authMiddleware for all subsequent requests
+    // 10 return response
     res.json({
       success: true,
-      sessionToken, // Client stores this and sends it in Authorization header
+      accessToken, // Client uses this in Authorization header
+      refreshToken, // Client stores for refresh
+      accessTokenExpiresIn, // 15 minutes
+      refreshTokenExpiresIn, // 30 days
       user: {
         id: chatUser._id.toString(),
         email: chatUser.email,

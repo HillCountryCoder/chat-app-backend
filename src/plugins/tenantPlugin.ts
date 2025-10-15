@@ -49,6 +49,7 @@ export function tenantIsolationPlugin(schema: Schema<any>) {
       "findOneAndDelete",
       "findOneAndReplace",
       "count",
+	  "create",
       "countDocuments",
       "deleteOne",
       "deleteMany",

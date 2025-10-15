@@ -2,6 +2,7 @@ import { Schema, model, Document, Types } from "mongoose";
 import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export interface RefreshTokenInterface extends Document {
+  tenantId: string; // For multi-tenancy support
   token: string;
   userId: Types.ObjectId;
   deviceInfo?: string;
@@ -15,6 +16,7 @@ export interface RefreshTokenInterface extends Document {
 
 const refreshTokenSchema = new Schema<RefreshTokenInterface>(
   {
+    tenantId: { type: String, required: true, index: true },
     token: {
       type: String,
       required: true,
