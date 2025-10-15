@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ExtendedError, Socket } from "socket.io";
 import { createLogger } from "../../common/logger";
 import { authService } from "../../services/auth.service";
 import { userService } from "../../services/user.service";
 import { UnauthorizedError } from "../../common/errors";
+import { setTenantContext } from "../../plugins/tenantPlugin";
 
 const logger = createLogger("socket-auth-middleware");
 
@@ -30,6 +32,13 @@ export const socketAuthMiddleware = async (
     );
     // Attach user to socket data
     socket.data.user = userFromDatabase;
+    socket.data.tenantId = userFromDatabase.tenantId;
+
+    await new Promise<void>((resolve) => {
+      setTenantContext(userFromDatabase.tenantId)({} as any, {} as any, () =>
+        resolve(),
+      );
+    });
 
     // Update last seen
     userFromDatabase.lastSeen = new Date();

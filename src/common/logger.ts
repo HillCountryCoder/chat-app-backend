@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import winston from "winston";
 import path from "path";
 import { NextFunction, Request, Response } from "express";
@@ -124,12 +125,13 @@ const httpLogger = (logger: winston.Logger) => {
 
 const createSocketLogger = (logger: winston.Logger) => {
   return {
-    connection: (socketId: string, userId?: string) => {
+    connection: (socketId: string, userId?: string, tenantId?: string) => {
       logger.info({
         message: "Socket connected",
         metadata: {
           socketId,
           userId: userId || "unauthenticated",
+          tenantId,
         },
       });
     },

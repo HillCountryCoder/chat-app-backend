@@ -14,7 +14,6 @@ import {
   setupPresenceBroadcasting,
 } from "../presence/socket/presence.handler";
 import { ServiceLocator } from "../common/service-locator";
-import { socketTenantMiddleware } from "./middleware/socketTenant.middleware";
 import { runInTenantContext } from "../plugins/tenantPlugin";
 
 const logger = createLogger("socket-server");
@@ -55,9 +54,6 @@ export const initializeSocketServer = (server: HttpServer) => {
 
   socketServerInstance = io;
 
-  // Apply tenant middleware FIRST - this sets socket.data.tenantId
-  socketTenantMiddleware(io);
-
   // Socket authentication middleware (runs after tenant middleware)
   io.use(socketAuthMiddleware);
 
@@ -90,7 +86,7 @@ export const initializeSocketServer = (server: HttpServer) => {
         throw new Error("Tenant ID not found in socket data");
       }
 
-      socketLogger.connection(socket.id, userId, { tenantId });
+      socketLogger.connection(socket.id, userId, tenantId);
 
       // Join TENANT-SCOPED user room for direct messages
       const userRoom = `tenant:${tenantId}:user:${userId}`;
