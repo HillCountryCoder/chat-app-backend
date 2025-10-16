@@ -292,11 +292,17 @@ describe.skipIf(!shouldRunPerformanceTests)(
         // Step 2: Upload to S3 (with more relaxed timeout for network conditions)
         const { presignedUrl, metadata } = urlResult.body;
         console.log(`   Presigned URL: ${presignedUrl}`);
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new Blob([new Uint8Array(fileData.content)]),
+          "filename.ext",
+        );
         const { duration: uploadDuration } =
           await PerformanceTestHelper.measureTime(async () => {
             const uploadResponse = await fetch(presignedUrl, {
               method: "PUT",
-              body: fileData.content,
+              body: formData,
               headers: {
                 "Content-Type": fileData.fileType,
               },
@@ -357,14 +363,19 @@ describe.skipIf(!shouldRunPerformanceTests)(
           });
 
         expect(urlResult.status).toBe(200);
-
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new Blob([new Uint8Array(fileData.content)]),
+          "filename.ext",
+        );
         // Step 2: Upload to S3
         const { presignedUrl, metadata } = urlResult.body;
         const { duration: uploadDuration } =
           await PerformanceTestHelper.measureTime(async () => {
             const uploadResponse = await fetch(presignedUrl, {
               method: "PUT",
-              body: fileData.content,
+              body: formData,
               headers: {
                 "Content-Type": fileData.fileType,
               },
@@ -519,7 +530,7 @@ describe.skipIf(!shouldRunPerformanceTests)(
         result.forEach((res, index) => {
           if (index < 2) {
             // HTTP responses
-            expect('status' in res).toBe(true);
+            expect("status" in res).toBe(true);
             expect((res as { status: number }).status).toBeDefined();
           } else {
             // Database operations

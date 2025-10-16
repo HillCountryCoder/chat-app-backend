@@ -104,10 +104,15 @@ describe.skipIf(!shouldRunRealTests)("Real AWS Integration Tests", () => {
 
       // Step 2: Upload actual file to S3 using presigned URL
       const testImageBuffer = crypto.randomBytes(1024 * 500); // 500KB random data
-
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new Blob([new Uint8Array(testImageBuffer)]),
+        "filename.ext",
+      );
       const uploadResponse = await fetch(presignedUrl, {
         method: "PUT",
-        body: testImageBuffer,
+        body: formData,
         headers: {
           "Content-Type": uploadRequest.fileType,
         },
@@ -121,12 +126,17 @@ describe.skipIf(!shouldRunRealTests)("Real AWS Integration Tests", () => {
       if (thumbnailUpload) {
         const thumbnailBuffer = crypto.randomBytes(1024 * 50); // 50KB thumbnail
         testS3Keys.push(thumbnailUpload.key);
-
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new Blob([new Uint8Array(thumbnailBuffer)]),
+          "filename.ext",
+        );
         const thumbnailUploadResponse = await fetch(
           thumbnailUpload.presignedUrl,
           {
             method: "PUT",
-            body: thumbnailBuffer,
+            body: formData,
             headers: {
               "Content-Type": "image/jpeg",
             },
@@ -273,10 +283,15 @@ describe.skipIf(!shouldRunRealTests)("Real AWS Integration Tests", () => {
 
       // Upload large file
       const largeFileBuffer = crypto.randomBytes(uploadRequest.fileSize);
-
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new Blob([new Uint8Array(largeFileBuffer)]),
+        "filename.ext",
+      );
       const uploadResponse = await fetch(presignedUrl, {
         method: "PUT",
-        body: largeFileBuffer,
+        body: formData,
         headers: {
           "Content-Type": uploadRequest.fileType,
         },

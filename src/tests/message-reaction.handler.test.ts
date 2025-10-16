@@ -1,4 +1,4 @@
-// src/tests/message-reaction.handler.test.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Server, Socket } from "socket.io";
@@ -113,6 +113,7 @@ describe("Message Reaction Socket Handlers", () => {
         mockIo as Server,
         mockSocket as Socket,
         userId,
+        "test-tenant"
       );
 
       // Simulate the socket event
@@ -166,6 +167,7 @@ describe("Message Reaction Socket Handlers", () => {
         mockIo as Server,
         mockSocket as Socket,
         userId,
+        "test-tenant"
       );
 
       // Simulate the socket event
@@ -193,7 +195,7 @@ describe("Message Reaction Socket Handlers", () => {
 
     it("should handle validation errors", async () => {
       // Arrange
-      const messageId = "message123";
+    //   const messageId = "message123";
       // Missing emoji
       const mockCallback = vi.fn();
 
@@ -202,6 +204,7 @@ describe("Message Reaction Socket Handlers", () => {
         mockIo as Server,
         mockSocket as Socket,
         userId,
+        "test-tenant"
       );
 
       // Simulate the socket event with missing required data to trigger validation error
@@ -233,6 +236,7 @@ describe("Message Reaction Socket Handlers", () => {
         mockIo as Server,
         mockSocket as Socket,
         userId,
+        "test-tenant"
       );
 
       // Simulate the socket event
@@ -278,6 +282,7 @@ describe("Message Reaction Socket Handlers", () => {
         mockIo as Server,
         mockSocket as Socket,
         userId,
+        "test-tenant"
       );
 
       // Simulate the socket event
@@ -315,6 +320,7 @@ describe("Message Reaction Socket Handlers", () => {
         mockIo as Server,
         mockSocket as Socket,
         userId,
+        "test-tenant"
       );
 
       // Simulate the socket event with missing required data to trigger validation error
@@ -346,6 +352,7 @@ describe("Message Reaction Socket Handlers", () => {
         mockIo as Server,
         mockSocket as Socket,
         userId,
+        "test-tenant"
       );
 
       // Simulate the socket event

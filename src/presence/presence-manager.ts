@@ -33,10 +33,9 @@ export class PresenceManager extends EventEmitter {
   private tenantId: string;
   private heartbeatTimers: Map<string, NodeJS.Timeout> = new Map();
 
-  constructor(redisClient: ReturnType<typeof createClient>, tenantId: string) {
+  constructor(redisClient: ReturnType<typeof createClient>) {
     super();
     this.redis = redisClient;
-    this.tenantId = tenantId;
 
     this.cleanupInterval = setInterval(() => {
       this.cleanupExpiredPresenceForAllTenants();
