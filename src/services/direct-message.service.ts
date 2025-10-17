@@ -15,7 +15,7 @@ import {
 } from "../common/errors";
 import { createLogger } from "../common/logger";
 import { userService } from "./user.service";
-import { runInTenantContext, tenantContext } from "../plugins/tenantPlugin";
+import { tenantContext } from "../plugins/tenantPlugin";
 const logger = createLogger("direct-message-service");
 
 // Constants for Phase 3 validations
@@ -67,33 +67,31 @@ export class DirectMessageService {
   }
 
   async getUserDirectMessages(userId: string): Promise<any[]> {
-    return runInTenantContext(this.getTenantId(), async () => {
-      const directMessages = await directMessageRepository.findAllByUserId(
-        userId,
-      );
+    const directMessages = await directMessageRepository.findAllByUserId(
+      userId,
+    );
 
-      // Get the last message for each direct message with populated attachments
-      const directMessagesWithLastMessage = await Promise.all(
-        directMessages.map(async (dm) => {
-          const messages = await messageRepository.findByDirectMessageId(
-            dm._id.toString(),
-            { limit: 1 },
-          );
+    // Get the last message for each direct message with populated attachments
+    const directMessagesWithLastMessage = await Promise.all(
+      directMessages.map(async (dm) => {
+        const messages = await messageRepository.findByDirectMessageId(
+          dm._id.toString(),
+          { limit: 1 },
+        );
 
-          // Populate attachments for the last message if it exists
-          const populatedMessages =
-            await messageService.populateMessageAttachments(messages);
+        // Populate attachments for the last message if it exists
+        const populatedMessages =
+          await messageService.populateMessageAttachments(messages);
 
-          return {
-            ...dm.toObject(),
-            lastMessage:
-              populatedMessages.length > 0 ? populatedMessages[0] : null,
-          };
-        }),
-      );
+        return {
+          ...dm.toObject(),
+          lastMessage:
+            populatedMessages.length > 0 ? populatedMessages[0] : null,
+        };
+      }),
+    );
 
-      return directMessagesWithLastMessage;
-    });
+    return directMessagesWithLastMessage;
   }
 
   async getMessages(
@@ -105,46 +103,42 @@ export class DirectMessageService {
       after?: string;
     },
   ) {
-    return runInTenantContext(this.getTenantId(), async () => {
-      // Verify user has access to this direct message
-      await this.getDirectMessageById(directMessageId, userId);
+    // Verify user has access to this direct message
+    await this.getDirectMessageById(directMessageId, userId);
 
-      // Get messages with populated attachments
-      const messages = await messageRepository.findByDirectMessageId(
-        directMessageId,
-        options,
-      );
+    // Get messages with populated attachments
+    const messages = await messageRepository.findByDirectMessageId(
+      directMessageId,
+      options,
+    );
 
-      // Populate attachments for messages that have them
-      return await messageService.populateMessageAttachments(messages);
-    });
+    // Populate attachments for messages that have them
+    return await messageService.populateMessageAttachments(messages);
   }
 
   private async getOrCreateDirectMessage(
     senderId: string,
     receiverId: string,
   ): Promise<DirectMessageInterface> {
-    return runInTenantContext(this.getTenantId(), async () => {
-      // Check if a direct message already exists between these users
-      const userIDs = [senderId, receiverId];
-      await userService.checkIfUsersExists(userIDs);
-      const existingDirectMessage =
-        await directMessageRepository.findByParticipants(senderId, receiverId);
+    // Check if a direct message already exists between these users
+    const userIDs = [senderId, receiverId];
+    await userService.checkIfUsersExists(userIDs);
+    const existingDirectMessage =
+      await directMessageRepository.findByParticipants(senderId, receiverId);
 
-      if (existingDirectMessage) {
-        return existingDirectMessage;
-      }
+    if (existingDirectMessage) {
+      return existingDirectMessage;
+    }
 
-      // Create a new direct message
-      const newDirectMessage = await directMessageRepository.create({
-        participantIds: [
-          new mongoose.Types.ObjectId(senderId),
-          new mongoose.Types.ObjectId(receiverId),
-        ],
-      });
-
-      return newDirectMessage;
+    // Create a new direct message
+    const newDirectMessage = await directMessageRepository.create({
+      participantIds: [
+        new mongoose.Types.ObjectId(senderId),
+        new mongoose.Types.ObjectId(receiverId),
+      ],
     });
+
+    return newDirectMessage;
   }
 
   // Updated sendMessage method with rich content support
@@ -169,11 +163,12 @@ export class DirectMessageService {
       replyToId,
     } = data;
 
-    const tenantId = this.getTenantId();
+    const tenantId = tenantContext.getStore()?.tenantId;
 
-    return runInTenantContext(tenantId, async () => {
+    {
       logger.debug("Sending direct message", {
         senderId,
+        tenantId,
         hasRichContent: !!richContent,
         contentType,
         attachmentCount: attachmentIds.length,
@@ -232,6 +227,7 @@ export class DirectMessageService {
         messageId: message.messageId,
         dmId,
         senderId,
+        tenantId,
         contentType: message.contentType,
         hasRichContent: !!richContent,
         attachmentCount: attachmentIds.length,
@@ -243,7 +239,7 @@ export class DirectMessageService {
         message,
         directMessage,
       };
-    });
+    }
   }
 
   // Phase 3 validation method
@@ -277,13 +273,11 @@ export class DirectMessageService {
   }
 
   async markMessagesAsRead(directMessageId: string, userId: string) {
-    return runInTenantContext(this.getTenantId(), async () => {
-      await this.getDirectMessageById(directMessageId, userId);
+    await this.getDirectMessageById(directMessageId, userId);
 
-      await unreadMessagesService.markAsRead(userId, "dm", directMessageId);
+    await unreadMessagesService.markAsRead(userId, "dm", directMessageId);
 
-      return { success: true };
-    });
+    return { success: true };
   }
 
   async getUnreadCounts(userId: string) {
@@ -309,45 +303,33 @@ export class DirectMessageService {
       after?: string;
     },
   ) {
-    return runInTenantContext(this.getTenantId(), async () => {
-      // Verify user has access to this direct message
-      await this.getDirectMessageById(directMessageId, userId);
+    // Verify user has access to this direct message
+    await this.getDirectMessageById(directMessageId, userId);
 
-      // Get only messages with media
-      const mediaMessages = await messageService.getMediaMessages(
-        directMessageId,
-        undefined,
-        undefined,
-        options,
-      );
+    // Get only messages with media
+    const mediaMessages = await messageService.getMediaMessages(
+      directMessageId,
+      undefined,
+      undefined,
+      options,
+    );
 
-      // Populate attachment details
-      return await messageService.populateMessageAttachments(mediaMessages);
-    });
+    // Populate attachment details
+    return await messageService.populateMessageAttachments(mediaMessages);
   }
 
   // New method for Phase 3: Get attachment statistics
   async getAttachmentStats(directMessageId: string, userId: string) {
-    return runInTenantContext(this.getTenantId(), async () => {
-      await this.getDirectMessageById(directMessageId, userId);
+    await this.getDirectMessageById(directMessageId, userId);
 
-      return await messageService.getAttachmentStatistics(
-        directMessageId,
-        "dm",
-      );
-    });
+    return await messageService.getAttachmentStatistics(directMessageId, "dm");
   }
 
   // New method: Get rich content statistics
   async getRichContentStats(directMessageId: string, userId: string) {
-    return runInTenantContext(this.getTenantId(), async () => {
-      await this.getDirectMessageById(directMessageId, userId);
+    await this.getDirectMessageById(directMessageId, userId);
 
-      return await messageService.getRichContentStatistics(
-        directMessageId,
-        "dm",
-      );
-    });
+    return await messageService.getRichContentStatistics(directMessageId, "dm");
   }
 
   async editMessage(data: {
@@ -367,8 +349,9 @@ export class DirectMessageService {
       contentType,
     } = data;
 
-    const tenantId = this.getTenantId();
-    return runInTenantContext(tenantId, async () => {
+    const tenantId = tenantContext.getStore()?.tenantId;
+
+    {
       logger.debug("Editing direct message", {
         directMessageId,
         messageId,
@@ -405,7 +388,7 @@ export class DirectMessageService {
         message: updatedMessage,
         success: true,
       };
-    });
+    }
   }
   private getTenantId(): string {
     const context = tenantContext.getStore();

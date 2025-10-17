@@ -124,34 +124,37 @@ export const registerDirectMessageHandlers = (
           return idStr !== userId;
         },
       );
+      const senderRoom = `tenant:${tenantId}:user:${userId}`;
+      io.to(senderRoom).emit("new_direct_message", {
+        message: result.message,
+        directMessage: result.directMessage,
+      });
 
       if (recipientId) {
-        // Convert to string if it's an ObjectId
         const recipientIdStr =
           recipientId instanceof mongoose.Types.ObjectId
             ? recipientId.toString()
             : recipientId;
 
-        // Emit to the recipient's TENANT-SCOPED room
         const recipientRoom = `tenant:${tenantId}:user:${recipientIdStr}`;
         io.to(recipientRoom).emit("new_direct_message", {
           message: result.message,
           directMessage: result.directMessage,
         });
 
-        // Get unread counts for the recipient (within tenant context)
+        // Get unread counts for recipient
         await runInTenantContext(tenantId, async () => {
           const unreadCounts = await directMessageService.getUnreadCounts(
             recipientIdStr,
           );
-
-          // Emit the unread counts to the recipient's TENANT-SCOPED room
-          io.to(`tenant:${tenantId}:user:${recipientIdStr}`).emit(
-            "unread_counts_update",
-            unreadCounts,
-          );
+          io.to(recipientRoom).emit("unread_counts_update", unreadCounts);
         });
       }
+      const dmRoom = `tenant:${tenantId}:direct_message:${result.directMessage._id}`;
+      io.to(dmRoom).emit("new_direct_message", {
+        message: result.message,
+        directMessage: result.directMessage,
+      });
 
       // Send confirmation to sender
       if (typeof callback === "function") {

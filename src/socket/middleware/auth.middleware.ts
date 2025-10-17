@@ -4,7 +4,7 @@ import { createLogger } from "../../common/logger";
 import { authService } from "../../services/auth.service";
 import { userService } from "../../services/user.service";
 import { UnauthorizedError } from "../../common/errors";
-import { setTenantContext } from "../../plugins/tenantPlugin";
+import { tenantContext } from "../../plugins/tenantPlugin";
 
 const logger = createLogger("socket-auth-middleware");
 
@@ -17,6 +17,7 @@ export const socketAuthMiddleware = async (
       socket.handshake.auth.token ||
       socket.handshake.headers.authorization?.split(" ")[1] ||
       socket.handshake.query.token;
+
     if (!token) {
       return next(new UnauthorizedError("Authentication token is missing"));
     }
@@ -30,21 +31,25 @@ export const socketAuthMiddleware = async (
     const userFromDatabase = await userService.getUserById(
       decodedUser._id.toString(),
     );
+
     // Attach user to socket data
     socket.data.user = userFromDatabase;
     socket.data.tenantId = userFromDatabase.tenantId;
 
-    await new Promise<void>((resolve) => {
-      setTenantContext(userFromDatabase.tenantId)({} as any, {} as any, () =>
-        resolve(),
-      );
-    });
+    logger.info(
+      `User ${userFromDatabase._id} with tenant ${userFromDatabase.tenantId} authenticated on socket ${socket.id}`,
+    );
 
     // Update last seen
     userFromDatabase.lastSeen = new Date();
     await userFromDatabase.save();
 
-    next();
+    // CRITICAL: Run next() INSIDE tenant context
+    tenantContext.run({ tenantId: userFromDatabase.tenantId }, () => {
+      next();
+    });
+
+    // REMOVE the second next() call - it was here
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Socket authentication failed", error);

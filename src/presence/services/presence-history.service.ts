@@ -5,6 +5,7 @@ import {
 } from "../models/presence-history.model";
 import { createLogger } from "../../common/logger";
 import { runInTenantContext, tenantContext } from "../../plugins/tenantPlugin";
+import { Tenant } from "../../models/tenant.model";
 
 const logger = createLogger("presence-history-service");
 
@@ -20,13 +21,15 @@ export class PresenceHistoryService {
    * Record a presence session
    */
   static async recordSession(
+    tenantId: string,
     userId: string,
     status: "online" | "away" | "busy",
     deviceInfo: any,
   ): Promise<string> {
-    return runInTenantContext(this.getTenantId(), async () => {
+    return runInTenantContext(tenantId, async () => {
       try {
         const session = new PresenceHistory({
+          tenantId,
           userId,
           status,
           sessionStart: new Date(),
@@ -45,8 +48,8 @@ export class PresenceHistoryService {
   /**
    * End a presence session
    */
-  static async endSession(sessionId: string): Promise<void> {
-    return runInTenantContext(this.getTenantId(), async () => {
+  static async endSession(tenantId: string, sessionId: string): Promise<void> {
+    return runInTenantContext(tenantId, async () => {
       try {
         const session = await PresenceHistory.findById(sessionId);
         if (session && !session.sessionEnd) {
@@ -172,8 +175,11 @@ export class PresenceHistoryService {
   /**
    * Clean up old presence history (run daily)
    */
-  static async cleanupOldHistory(daysToKeep: number = 90): Promise<number> {
-    return runInTenantContext(this.getTenantId(), async () => {
+  static async cleanupOldHistory(
+    tenantId: string,
+    daysToKeep: number = 90,
+  ): Promise<number> {
+    return runInTenantContext(tenantId, async () => {
       try {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
@@ -196,8 +202,10 @@ export class PresenceHistoryService {
   /**
    * Get active sessions (sessions without end time)
    */
-  static async getActiveSessions(): Promise<IPresenceHistory[]> {
-    return runInTenantContext(this.getTenantId(), async () => {
+  static async getActiveSessions(
+    tenantId: string,
+  ): Promise<IPresenceHistory[]> {
+    return runInTenantContext(tenantId, async () => {
       try {
         return await PresenceHistory.find({
           sessionEnd: { $exists: false },
@@ -358,5 +366,28 @@ export class PresenceHistoryService {
         };
       }
     });
+  }
+  static async cleanupAllTenants(daysToKeep: number = 90): Promise<void> {
+    const tenants = await Tenant.find({ isActive: true }).lean();
+
+    for (const tenant of tenants) {
+      await this.cleanupOldHistory(tenant.tenantId, daysToKeep);
+    }
+  }
+
+  static async cleanupOrphanedSessionsAllTenants(): Promise<void> {
+    const tenants = await Tenant.find({ isActive: true }).lean();
+
+    for (const tenant of tenants) {
+      const activeSessions = await this.getActiveSessions(tenant.tenantId);
+      const now = new Date();
+
+      for (const session of activeSessions) {
+        const age = now.getTime() - session.sessionStart.getTime();
+        if (age > 24 * 60 * 60 * 1000) {
+          await this.endSession(tenant.tenantId, session._id.toString());
+        }
+      }
+    }
   }
 }

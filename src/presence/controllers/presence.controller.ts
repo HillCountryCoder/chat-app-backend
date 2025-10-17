@@ -408,8 +408,14 @@ export class PresenceController {
       //   if (!req.user.isAdmin) {
       //     return res.status(403).json({ error: "Admin access required" });
       //   }
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        throw new Error("Tenant is not presence in context");
+      }
 
-      const activeSessions = await PresenceHistoryService.getActiveSessions();
+      const activeSessions = await PresenceHistoryService.getActiveSessions(
+        tenantId,
+      );
 
       res.json({
         activeSessions,

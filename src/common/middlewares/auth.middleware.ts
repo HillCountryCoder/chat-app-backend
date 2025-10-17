@@ -4,7 +4,7 @@ import { userService } from "../../services/user.service";
 import { UnauthorizedError } from "../errors";
 import { createLogger } from "../logger";
 import { TenantAuthenticatedRequest } from "../types";
-import { setTenantContext } from "../../plugins/tenantPlugin";
+import { tenantContext } from "../../plugins/tenantPlugin";
 
 const logger = createLogger("auth-middleware");
 
@@ -58,20 +58,10 @@ export const authMiddleware = async (
     // CRITICAL: Set tenant context for database isolation
     // This ensures all subsequent database queries are automatically
     // filtered by the user's tenantId via the tenantIsolationPlugin
-    await new Promise<void>((resolve) => {
-      setTenantContext(user.tenantId)(req, res, () => resolve());
+    return tenantContext.run({ tenantId: user.tenantId }, () => {
+      (req as TenantAuthenticatedRequest).tenantId = user.tenantId;
+      next();
     });
-
-    // Also attach tenantId directly for convenience
-    (req as TenantAuthenticatedRequest).tenantId = user.tenantId;
-
-    logger.debug("User authenticated", {
-      userId: user._id.toString(),
-      tenantId: user.tenantId,
-      email: user.email,
-    });
-
-    next();
   } catch (error) {
     logger.error("Authentication failed", { error });
 

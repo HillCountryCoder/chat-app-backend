@@ -55,7 +55,7 @@ export const registerPresenceHandlers = (
 
   socket.on("authenticate_presence", async (data, callback) => {
     try {
-      logger.event(socket.id, "authenticate_presence", { userId });
+      logger.event(socket.id, "authenticate_presence", { userId, tenantId });
       const deviceInfo = {
         type: "web" as const,
         userAgent: socket.handshake.headers["user-agent"],
@@ -69,8 +69,8 @@ export const registerPresenceHandlers = (
         initialStatus,
         deviceInfo,
       );
-
       sessionId = await PresenceHistoryService.recordSession(
+        tenantId,
         userId,
         initialStatus,
         deviceInfo,
@@ -319,7 +319,7 @@ export const registerPresenceHandlers = (
 
       // End session
       if (sessionId) {
-        await PresenceHistoryService.endSession(sessionId);
+        await PresenceHistoryService.endSession(tenantId, sessionId);
       }
 
       // Clear heartbeat interval

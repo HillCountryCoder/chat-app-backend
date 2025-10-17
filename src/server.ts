@@ -122,37 +122,27 @@ async function startServer() {
 }
 
 // Background jobs for presence system
+// Background jobs for presence system
 function setupBackgroundJobs() {
   // Clean up old presence history daily
   const cleanupJob = setInterval(async () => {
     try {
-      const deletedCount = await PresenceHistoryService.cleanupOldHistory(90); // Keep 90 days
-      logger.info(
-        `Presence cleanup job completed, deleted ${deletedCount} records`,
-      );
+      await PresenceHistoryService.cleanupAllTenants(90);
+      logger.info(`Presence cleanup job completed for all tenants`);
     } catch (error) {
       logger.error("Error in presence cleanup job:", error);
     }
-  }, 24 * 60 * 60 * 1000); // Run every 24 hours
+  }, 24 * 60 * 60 * 1000);
 
   // End orphaned sessions every hour
   const sessionCleanupJob = setInterval(async () => {
     try {
-      const activeSessions = await PresenceHistoryService.getActiveSessions();
-      const now = new Date();
-
-      for (const session of activeSessions) {
-        // End sessions that started more than 24 hours ago without an end time
-        const sessionAge = now.getTime() - session.sessionStart.getTime();
-        if (sessionAge > 24 * 60 * 60 * 1000) {
-          await PresenceHistoryService.endSession(session._id.toString());
-          logger.info(`Ended orphaned session: ${session._id}`);
-        }
-      }
+      await PresenceHistoryService.cleanupOrphanedSessionsAllTenants();
+      logger.info(`Session cleanup completed for all tenants`);
     } catch (error) {
       logger.error("Error in session cleanup job:", error);
     }
-  }, 60 * 60 * 1000); // Run every hour
+  }, 60 * 60 * 1000);
 
   // Cleanup jobs on shutdown
   process.on("SIGTERM", () => {
