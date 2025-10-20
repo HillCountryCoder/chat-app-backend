@@ -3,6 +3,7 @@ import { tenantIsolationPlugin } from "../plugins/tenantPlugin";
 
 export interface DirectMessageInterface extends Document {
   _id: mongoose.Types.ObjectId;
+  tenantId: string;
   participantIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   lastActivity: Date;
@@ -10,6 +11,11 @@ export interface DirectMessageInterface extends Document {
 
 const directMessageSchema = new Schema<DirectMessageInterface>(
   {
+    tenantId: {
+      type: String,
+      required: true,
+      default: "default",
+    },
     participantIds: [
       {
         type: Schema.Types.ObjectId,

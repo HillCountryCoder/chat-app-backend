@@ -9,6 +9,7 @@ export enum ChannelType {
 
 export interface ChannelInterface extends Document {
   _id: mongoose.Types.ObjectId;
+  tenantId: string;
   name: string;
   description?: string;
   creatorId: mongoose.Types.ObjectId;
@@ -21,6 +22,11 @@ export interface ChannelInterface extends Document {
 
 const channelSchema = new Schema<ChannelInterface>(
   {
+    tenantId: {
+      type: String,
+      required: true,
+      default: "default",
+    },
     name: {
       type: String,
       required: true,

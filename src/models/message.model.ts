@@ -25,6 +25,7 @@ export interface Reaction {
 
 export interface MessageInterface extends Document {
   _id: mongoose.Types.ObjectId;
+  tenantId: string;
   messageId: string;
   senderId: mongoose.Types.ObjectId;
   channelId?: mongoose.Types.ObjectId;
@@ -77,6 +78,12 @@ const messageSchema = new Schema<MessageInterface>(
     messageId: {
       type: String,
       required: true,
+    },
+    tenantId: {
+      type: String,
+      required: true,
+      default: "default",
+      index: true,
     },
     senderId: {
       type: Schema.Types.ObjectId,

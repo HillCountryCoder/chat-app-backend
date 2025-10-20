@@ -23,6 +23,10 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
 
   JWT_SECRET: z.string().min(32).default("thenotsorandomsecret123456789012"),
+  JWT_REFRESH_SECRET: z
+    .string()
+    .min(32)
+    .default(process.env.JWT_SECRET || ""),
   JWT_EXPIRES_IN: z.string().default("1d"),
 
   CORS_ORIGIN: z.string().default("*"),

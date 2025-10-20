@@ -98,6 +98,11 @@ refreshTokenSchema.index(
   { name: "tenant_user_device_expiresAt_idx" },
 );
 
+refreshTokenSchema.index(
+  { token: 1, tenantId: 1 },
+  { name: "token_tenant_idx" },
+);
+
 // Plugin for tenant isolation if needed in future
 refreshTokenSchema.plugin(tenantIsolationPlugin);
 export const RefreshToken = model<RefreshTokenInterface>(

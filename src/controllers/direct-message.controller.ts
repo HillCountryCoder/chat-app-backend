@@ -5,6 +5,7 @@ import { createLogger } from "../common/logger";
 import { z } from "zod";
 import { UnauthorizedError, ValidationError } from "../common/errors";
 import { ContentType } from "../models";
+import { runInTenantContext } from "../plugins/tenantPlugin";
 
 const logger = createLogger("direct-message-controller");
 
@@ -169,7 +170,10 @@ export class DirectMessageController {
         throw new UnauthorizedError("User not authenticated");
       }
       const userId = req.user._id.toString();
-
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        throw new UnauthorizedError("Tenant context not found");
+      }
       // Validate query parameters
       let validatedQuery;
       try {
@@ -183,11 +187,13 @@ export class DirectMessageController {
         throw error;
       }
 
-      const messages = await directMessageService.getMessages(
-        id,
-        userId,
-        validatedQuery,
-      );
+      const messages = await runInTenantContext(tenantId, async () => {
+        return await directMessageService.getMessages(
+          id,
+          userId,
+          validatedQuery,
+        );
+      });
       res.json(messages);
     } catch (error) {
       next(error);
@@ -259,6 +265,7 @@ export class DirectMessageController {
       logger.info("Message sent successfully", {
         messageId: result.message.messageId,
         contentType,
+        tenant: result.directMessage,
         hasRichContent: !!validatedData.richContent,
         hasAttachments: (validatedData.attachmentIds || []).length > 0,
       });

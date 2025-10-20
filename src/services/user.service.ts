@@ -316,7 +316,6 @@ export class UserService {
 
       user.lastSeen = new Date();
       await user.save();
-
       const tokens = await authService.generateTokenPair(
         user,
         credentials.rememberMe || false,
