@@ -86,7 +86,6 @@ const userSchema = new Schema<UserInterface>(
     tenantId: {
       type: String,
       required: true,
-      default: "default", // Existing users get 'default' tenant
       index: true,
     },
 

@@ -1,32 +1,218 @@
 import { Request, Response, NextFunction } from "express";
 import { TenantService } from "../services/tenant.service";
-import { tenantContext } from "../plugins/tenantPlugin";
+import { runInTenantContext, tenantContext } from "../plugins/tenantPlugin";
 import { TenantAuthenticatedRequest } from "../common/types/auth.type";
-import { UnauthorizedError } from "../common/errors";
+import {
+  BadRequestError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../common/errors";
+import { authService } from "../services";
+import { User } from "../models";
+import crypto from "crypto";
+import { createLogger } from "../common/logger";
 
+interface TenantTokenPayload {
+  tenantUserId: string; // External user ID
+  email: string;
+  name: string;
+  avatarUrl?: string;
+  tenantId: string;
+  externalSystem: string; // 'wnp', 'shopify', etc. - DYNAMIC!
+  timestamp: number;
+  nonce: string;
+  iss: string; // Issuer
+  aud: string; // Audience
+  exp: number; // Expiry timestamp (in seconds)
+}
+
+const logger = createLogger("tenant-controller");
 export class TenantController {
   /**
+   * POST /api/tenants/sso/init
+   * SSO authentication endpoint (controller version)
+   */
+  static async initSSO(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token, signature } = req.body;
+
+      // Validate request
+      if (!token || !signature) {
+        res.status(400).json({ error: "Missing token or signature" });
+      }
+
+      // Decode token
+      let payload: TenantTokenPayload;
+      try {
+        const decodedStr = Buffer.from(token, "base64").toString("utf-8");
+        payload = JSON.parse(decodedStr);
+      } catch (err) {
+        logger.error("Failed to decode SSO token", { error: err });
+        throw new BadRequestError("Invalid token format");
+      }
+
+      // Validate payload
+      if (
+        !payload.tenantId ||
+        !payload.tenantUserId ||
+        !payload.email ||
+        !payload.externalSystem
+      ) {
+        res.status(400).json({ error: "Invalid token payload" });
+      }
+
+      // Check expiry
+      const now = Math.floor(Date.now() / 1000);
+      if (payload.exp && payload.exp < now) {
+        res.status(401).json({ error: "Token expired" });
+      }
+
+      // Get tenant
+      const tenant = await TenantService.getTenantWithSecret(payload.tenantId);
+      if (!tenant || !tenant.isActive || tenant.status !== "verified") {
+        res.status(403).json({ error: "Tenant not active" });
+      }
+
+      // Verify signature
+      const expectedSignature = crypto
+        .createHmac("sha256", tenant.sharedSecret)
+        .update(token)
+        .digest("hex");
+
+      if (signature !== expectedSignature) {
+        res.status(401).json({ error: "Invalid signature" });
+      }
+
+      // Verify origin
+      const origin = req.headers.origin || req.headers.referer;
+      if (
+        !origin ||
+        !tenant.allowedOrigins.some((allowed) => origin.startsWith(allowed))
+      ) {
+        res.status(403).json({ error: "Origin not allowed" });
+      }
+
+      // Find or create user
+      const chatUser = await runInTenantContext(tenant.tenantId, async () => {
+        let user = await User.findOne({
+          tenantId: tenant.tenantId,
+          externalId: payload.tenantUserId,
+          externalSystem: payload.externalSystem,
+        });
+
+        if (!user) {
+          user = await User.create({
+            tenantId: tenant.tenantId,
+            externalId: payload.tenantUserId,
+            externalSystem: payload.externalSystem,
+            email: payload.email,
+            username:
+              payload.email.split("@")[0] +
+              "_" +
+              payload.tenantUserId.slice(0, 6),
+            displayName: payload.name,
+            avatarUrl: payload.avatarUrl,
+            isActive: true,
+            emailVerified: true,
+          });
+        } else {
+          user.displayName = payload.name;
+          user.email = payload.email;
+          user.avatarUrl = payload.avatarUrl;
+          user.isActive = true;
+          await user.save();
+        }
+
+        return user;
+      });
+
+      logger.info("SSO user authenticated", {
+        tenantId: tenant.tenantId,
+        user: { ...chatUser },
+      });
+
+      // Generate tokens
+      const deviceInfo = req.headers["user-agent"] || "Unknown Device";
+      const ipAddress = req.ip || req.socket.remoteAddress || "Unknown IP";
+      const userAgent = req.headers["user-agent"] || "Unknown";
+
+      const {
+        accessToken,
+        refreshToken,
+        accessTokenExpiresIn,
+        refreshTokenExpiresIn,
+      } = await authService.generateTokenPair(
+        chatUser,
+        false,
+        deviceInfo,
+        ipAddress,
+        userAgent,
+      );
+      logger.info("SSO init successful", {
+        userId: chatUser._id.toString(),
+        tenantId: tenant.tenantId,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      });
+      // Return response
+      res.status(200).json({
+        success: true,
+        accessToken,
+        refreshToken,
+        accessTokenExpiresIn,
+        refreshTokenExpiresIn,
+        user: {
+          id: chatUser._id.toString(),
+          email: chatUser.email,
+          displayName: chatUser.displayName,
+          avatarUrl: chatUser.avatarUrl,
+        },
+        tenant: {
+          id: tenant.tenantId,
+          name: tenant.name,
+        },
+      });
+    } catch (error) {
+      console.error("SSO init failed:", error);
+      next(error);
+    }
+  }
+  /**
    * POST /api/tenants/register
-   * Register a new tenant
+   * Complete tenant registration (called by client with credentials)
+   * This is the NEW method that clients use
    */
   static async registerTenant(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, name, domain, allowedOrigins, adminEmail } = req.body;
+      const {
+        tenantId,
+        domain,
+        allowedOrigins,
+        sharedSecret,
+        registrationToken,
+      } = req.body;
 
       // Validate required fields
-      if (!tenantId || !name || !domain || !allowedOrigins || !adminEmail) {
-        return res.status(400).json({
+      if (
+        !tenantId ||
+        !domain ||
+        !allowedOrigins ||
+        !sharedSecret ||
+        !registrationToken
+      ) {
+        res.status(400).json({
           error:
-            "Missing required fields: tenantId, name, domain, allowedOrigins, adminEmail",
+            "Missing required fields: tenantId, domain, allowedOrigins, sharedSecret, registrationToken",
         });
       }
 
-      const tenant = await TenantService.registerTenant({
+      // Complete registration with provided credentials
+      const tenant = await TenantService.completeRegistration({
         tenantId,
-        name,
         domain,
         allowedOrigins,
-        adminEmail,
+        sharedSecret,
+        registrationToken,
       });
 
       res.status(201).json({
@@ -36,10 +222,10 @@ export class TenantController {
           name: tenant.name,
           domain: tenant.domain,
           status: tenant.status,
-          sharedSecret: tenant.sharedSecret, // Return secret ONLY on registration
+          // DO NOT sharedSecret
         },
         message:
-          "Tenant registered successfully. Store the sharedSecret securely!",
+          "Tenant registered successfully. Please contact admin to verify your domain.",
       });
     } catch (error) {
       console.error("Tenant registration error:", error);
@@ -56,7 +242,7 @@ export class TenantController {
       const { tenantId, verificationCode } = req.body;
 
       if (!tenantId || !verificationCode) {
-        return res.status(400).json({
+        res.status(400).json({
           error: "Missing tenantId or verificationCode",
         });
       }
@@ -93,7 +279,7 @@ export class TenantController {
       const tenant = await TenantService.getTenant(tenantId);
 
       if (!tenant) {
-        return res.status(404).json({ error: "Tenant not found" });
+        res.status(404).json({ error: "Tenant not found" });
       }
 
       res.json({
@@ -135,7 +321,7 @@ export class TenantController {
       // TODO: Verify that requester has admin permissions for this tenant
       // For now, just check if user belongs to the tenant
       if (req.user.tenantId !== tenantId) {
-        return res.status(403).json({
+        res.status(403).json({
           error: "You don't have permission to update this tenant",
         });
       }
@@ -246,7 +432,7 @@ export class TenantController {
       const context = req.tenantContext || tenantContext.getStore();
 
       if (!context) {
-        return res.status(401).json({ error: "No active session" });
+        throw new NotFoundError("No tenant context found");
       }
 
       res.json({

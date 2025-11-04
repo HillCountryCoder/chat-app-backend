@@ -34,6 +34,7 @@ describe("Socket Auth Middleware", () => {
   let userId: string;
   let username: string;
   let email: string;
+  let tenantId: string;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -41,6 +42,7 @@ describe("Socket Auth Middleware", () => {
     userId = new mongoose.Types.ObjectId().toString();
     username = "testUser1";
     email = "test@email.com";
+    tenantId = "test-tenant";
 
     mockSocket = {
       handshake: {
@@ -74,6 +76,7 @@ describe("Socket Auth Middleware", () => {
       _id: userId,
       username,
       email,
+      tenantId,
     });
     vi.mocked(userService.getUserById).mockResolvedValueOnce(mockUser as any);
 
@@ -102,6 +105,7 @@ describe("Socket Auth Middleware", () => {
       _id: userId,
       username,
       email,
+      tenantId,
     });
     vi.mocked(userService.getUserById).mockResolvedValueOnce(mockUser as any);
 
@@ -127,6 +131,7 @@ describe("Socket Auth Middleware", () => {
       _id: userId,
       username,
       email,
+      tenantId,
     });
     vi.mocked(userService.getUserById).mockResolvedValueOnce(mockUser as any);
 
@@ -170,6 +175,7 @@ describe("Socket Auth Middleware", () => {
       _id: userId,
       username,
       email,
+      tenantId,
     });
     vi.mocked(userService.getUserById).mockImplementationOnce(() => {
       throw new Error("User not found");

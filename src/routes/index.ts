@@ -7,6 +7,7 @@ import messageReactionRoutes from "./message-reaction.routes";
 import attachmentRoutes from "./attachment.routes";
 import presenceRoutes from "../presence/routes/presence.routes";
 import tenantRoutes from "./tenant.routes";
+import adminRoutes from "./admin.routes";
 const router = Router();
 
 router.use("/auth", authRoutes);
@@ -17,4 +18,5 @@ router.use("/messages", messageReactionRoutes);
 router.use("/attachments", attachmentRoutes);
 router.use("/presence", presenceRoutes);
 router.use("/tenants", tenantRoutes);
+router.use("/admin", adminRoutes);
 export default router;

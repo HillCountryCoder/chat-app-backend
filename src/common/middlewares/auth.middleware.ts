@@ -42,7 +42,10 @@ export const authMiddleware = async (
     }
 
     // Get full user data from database
-    const user = await userService.getUserById(decodedUser._id.toString());
+    const user = await userService.checkIfUserExists(
+      decodedUser._id.toString(),
+      decodedUser.tenantId,
+    );
 
     if (!user) {
       throw new UnauthorizedError("User not found");

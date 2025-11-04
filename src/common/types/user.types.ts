@@ -3,4 +3,5 @@ export type UserFromToken = {
   _id: unknown;
   username: string;
   email: string;
+  tenantId: string;
 };

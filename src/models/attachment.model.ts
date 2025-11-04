@@ -38,6 +38,7 @@ export interface AttachmentMetadata {
 export interface AttachmentInterface extends Document {
   _id: mongoose.Types.ObjectId;
   name: string;
+  tenantId: string;
   url: string; // CDN URL
   type: string; // MIME type
   size: number; // Original size
@@ -101,6 +102,10 @@ const attachmentMetadataSchema = new Schema<AttachmentMetadata>(
 const attachmentSchema = new Schema<AttachmentInterface>(
   {
     name: {
+      type: String,
+      required: true,
+    },
+    tenantId: {
       type: String,
       required: true,
     },

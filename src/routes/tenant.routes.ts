@@ -2,7 +2,6 @@ import { Router } from "express";
 import { RequestHandler } from "express";
 import { TenantController } from "../controllers/tenant.controller";
 import { authMiddleware } from "../common/middlewares";
-import { verifySSOToken } from "../common/middlewares/sso_authentication.middleware";
 
 const router = Router();
 
@@ -12,7 +11,8 @@ const router = Router();
  * Initialize SSO session from parent app
  * This uses the verifySSOToken middleware which handles the entire auth flow
  **/
-router.post("/sso/init", verifySSOToken as RequestHandler);
+router.post("/sso/init", TenantController.initSSO as RequestHandler);
+// router.post("/sso/init", verifySSOToken as RequestHandler);
 
 /**
  * GET /api/tenants/sso/session

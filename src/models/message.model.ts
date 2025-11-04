@@ -82,7 +82,6 @@ const messageSchema = new Schema<MessageInterface>(
     tenantId: {
       type: String,
       required: true,
-      default: "default",
       index: true,
     },
     senderId: {

@@ -5,7 +5,9 @@ import { User } from "../../models/user.model";
 import { TenantAuthenticatedRequest } from "../types/auth.type";
 import { authService } from "../../services";
 import { runInTenantContext } from "../../plugins/tenantPlugin";
+import { createLogger } from "../logger";
 
+const logger = createLogger("sso-auth-middleware");
 interface TenantTokenPayload {
   tenantUserId: string; // External user ID
   email: string;
@@ -34,7 +36,7 @@ interface TenantTokenPayload {
  * 4. Client uses sessionToken with normal authMiddleware for all other API calls
  *
  * @param req - Request with token and signature in body
- * @param res - Response object
+* @param res - Response object
  * @param next - NextFunction (not used - this is terminal middleware)
  */
 export const verifySSOToken = async (
@@ -43,6 +45,11 @@ export const verifySSOToken = async (
 ) => {
   try {
     const { token, signature } = req.body;
+    logger.info("Starting SSO token verification process", {
+      tenantId: req.body.tenantId,
+      token: token,
+      signature: signature,
+    });
 
     // 1. Validate request has required fields
     if (!token || !signature) {
@@ -78,10 +85,16 @@ export const verifySSOToken = async (
     if (payload.exp && payload.exp < now) {
       return res.status(401).json({ error: "Token expired" });
     }
-
+    logger.info("SSO token payload validated", {
+      tenantId: payload.tenantId,
+      tenantUserId: payload.tenantUserId,
+    });
     // 5. Get tenant and verify it's active
     const tenant = await TenantService.getTenantWithSecret(payload.tenantId);
-
+    logger.info("Fetched tenant for SSO", {
+      tenantId: payload.tenantId,
+      tenant,
+    });
     if (!tenant) {
       console.error("Tenant not found:", payload.tenantId);
       return res.status(404).json({ error: "Tenant not found" });
@@ -190,14 +203,27 @@ export const verifySSOToken = async (
       ipAddress,
       userAgent,
     );
+    logger.info("Generated token pair for SSO user", {
+      accessTokenExpiresIn,
+      refreshTokenExpiresIn,
+      tenantId: payload.tenantId,
+      tenantEmail: payload.email,
+    });
 
     // 10 return response
-    res.json({
+    logger.info("About to send SSO response", {
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      userId: chatUser._id.toString(),
+    });
+
+    // 10 return response
+    const responseData = {
       success: true,
-      accessToken, // Client uses this in Authorization header
-      refreshToken, // Client stores for refresh
-      accessTokenExpiresIn, // 15 minutes
-      refreshTokenExpiresIn, // 30 days
+      accessToken,
+      refreshToken,
+      accessTokenExpiresIn,
+      refreshTokenExpiresIn,
       user: {
         id: chatUser._id.toString(),
         email: chatUser.email,
@@ -208,7 +234,13 @@ export const verifySSOToken = async (
         id: tenant.tenantId,
         name: tenant.name,
       },
-    });
+    };
+
+    logger.info("Sending SSO response", { responseData });
+
+    res.status(200).json(responseData); // Explicitly set status 200
+
+    logger.info("SSO response sent successfully");
   } catch (error) {
     console.error("SSO verification failed:", error);
     return res.status(500).json({ error: "Authentication failed" });

@@ -28,8 +28,9 @@ export const socketAuthMiddleware = async (
       return next(new UnauthorizedError("Invalid authentication token"));
     }
 
-    const userFromDatabase = await userService.getUserById(
+    const userFromDatabase = await userService.getUserByIdWithTenantId(
       decodedUser._id.toString(),
+      decodedUser.tenantId,
     );
 
     // Attach user to socket data

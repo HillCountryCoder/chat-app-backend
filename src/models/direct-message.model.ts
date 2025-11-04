@@ -14,7 +14,6 @@ const directMessageSchema = new Schema<DirectMessageInterface>(
     tenantId: {
       type: String,
       required: true,
-      default: "default",
     },
     participantIds: [
       {

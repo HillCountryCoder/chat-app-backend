@@ -6,7 +6,13 @@ export interface ITenant extends Document {
   domain: string;
   allowedOrigins: string[];
   sharedSecret: string;
-  status: "pending_verification" | "verified" | "suspended";
+  status:
+    | "pending_registration"
+    | "pending_verification"
+    | "verified"
+    | "suspended";
+  registrationToken?: string;
+  registrationExpiry?: Date;
   settings: {
     maxUsers?: number;
     features?: string[];
@@ -53,8 +59,21 @@ const TenantSchema = new Schema<ITenant>(
     },
     status: {
       type: String,
-      enum: ["pending_verification", "verified", "suspended"],
-      default: "pending_verification",
+      enum: [
+        "pending_registration",
+        "pending_verification",
+        "verified",
+        "suspended",
+      ], // UPDATED
+      default: "pending_registration",
+    },
+    registrationToken: {
+      type: String,
+      select: false,
+    },
+    registrationExpiry: {
+      type: Date,
+      select: false,
     },
     settings: {
       maxUsers: { type: Number, default: 1000 },

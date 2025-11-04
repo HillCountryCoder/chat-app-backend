@@ -62,27 +62,32 @@ export function tenantIsolationPlugin(schema: Schema<any>) {
     queryMiddleware,
   );
 
-  // ===== SAVE HOOKS (CREATE/UPDATE) =====
-  schema.pre("save", function (next) {
+  // ===== VALIDATION HOOKS (INJECT BEFORE VALIDATION ) =====
+  schema.pre("validate", function (next) {
     const context = tenantContext.getStore();
 
-    // For new documents, auto-inject tenantId
+    // For new documents, inject tenantId BEFORE validation
     if (this.isNew) {
-      if (!this.tenantId) {
-        if (!context?.tenantId) {
-          throw new Error(
+      if (!context?.tenantId) {
+        return next(
+          new Error(
             "🚨 SECURITY: Cannot create document without tenant context!",
-          );
-        }
-        this.tenantId = context.tenantId;
-      }
-    } else {
-      // For updates, verify tenantId hasn't changed
-      if (this.isModified("tenantId")) {
-        throw new Error(
-          "🚨 SECURITY: Cannot modify tenantId! This is immutable.",
+          ),
         );
       }
+
+      this.tenantId = context.tenantId;
+    }
+
+    next();
+  });
+
+  // ===== SAVE HOOKS (CREATE/UPDATE) =====
+  schema.pre("save", function (next) {
+    if (!this.isNew && this.isModified("tenantId")) {
+      return next(
+        new Error("🚨 SECURITY: Cannot modify tenantId! This is immutable."),
+      );
     }
 
     next();

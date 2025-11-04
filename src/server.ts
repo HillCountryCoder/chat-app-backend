@@ -19,12 +19,38 @@ const serviceLocator = ServiceLocator.getInstance();
 const logger = createLogger("main");
 const corsOrigins = env.CORS_ORIGIN
   ? env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
-  : "*";
-// Middlewares
+  : ["http://localhost:3000", "http://localhost:3001", "http://localhost:5001"];
+
+logger.info("CORS allowed origins:", corsOrigins);
+
 app.use(
   cors({
-    origin: corsOrigins,
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like curl, mobile apps, Postman)
+      if (!origin) return callback(null, true);
+
+      // Check if origin is in allowed list
+      const isAllowed = corsOrigins.some(
+        (allowed) => origin === allowed || origin.startsWith(allowed),
+      );
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        logger.warn(`CORS blocked: ${origin}`);
+        callback(null, false);
+      }
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Tenant-ID",
+      "X-Requested-With",
+    ],
+    exposedHeaders: ["Content-Length"],
+    maxAge: 86400, // 24 hours
   }),
 );
 // Middleware

@@ -25,7 +25,6 @@ const channelSchema = new Schema<ChannelInterface>(
     tenantId: {
       type: String,
       required: true,
-      default: "default",
     },
     name: {
       type: String,

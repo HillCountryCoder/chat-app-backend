@@ -181,6 +181,11 @@ export class DirectMessageService {
 
       // If directMessageId isn't provided but receiverId is, get or create a direct message
       if (!dmId && receiverId) {
+        logger.debug("Getting or creating direct message", {
+          tenantId,
+          senderId,
+          receiverId,
+        });
         const directMessage = await this.getOrCreateDirectMessage(
           senderId,
           receiverId,
@@ -195,8 +200,8 @@ export class DirectMessageService {
       }
 
       // Verify the direct message exists and the sender is a participant
+      logger.debug("Direct message verified", { dmId, senderId, tenantId });
       const directMessage = await this.getDirectMessageById(dmId, senderId);
-
       // Create the message with attachments and rich content
       const message = await messageService.createMessageWithAttachments({
         senderId,

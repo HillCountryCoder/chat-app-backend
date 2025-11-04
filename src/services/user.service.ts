@@ -9,7 +9,7 @@ import {
 import { userRepository } from "../repositories/user.repository";
 import { authService } from "./auth.service";
 import { LoginInput, RegisterInput } from "./validation/auth.validation";
-import { runInTenantContext } from "../plugins/tenantPlugin";
+import { runInTenantContext, tenantContext } from "../plugins/tenantPlugin";
 
 export interface AuthResponse {
   user: Partial<User>;
@@ -45,9 +45,18 @@ export class UserService {
     return UserService.instance;
   }
 
+  public async getTenantIdForUser(): Promise<string> {
+    const context = tenantContext.getStore();
+    if (!context) {
+      throw new Error("No tenant context available");
+    }
+    return context.tenantId;
+  }
+
   // User creation
   public async createUser(userData: RegisterInput): Promise<User> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
       // Check for existing user - we don't need validation here because Zod already did it
       const existingUser = await userRepository.findOne({
         $or: [{ email: userData.email }, { username: userData.username }],
@@ -83,7 +92,8 @@ export class UserService {
   }
 
   public async registerUser(userData: RegisterInput): Promise<AuthResponse> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
       const newUser = await this.createUser(userData);
 
       // Generate token pair and return user data
@@ -113,7 +123,8 @@ export class UserService {
   }
 
   public async loginUser(credentials: LoginInput): Promise<AuthResponse> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
       let user;
       if (credentials.email) {
         user = await userRepository.findByEmail(credentials.email);
@@ -165,7 +176,21 @@ export class UserService {
 
   // Get user by ID
   public async getUserById(id: string): Promise<User> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
+      const user = await userRepository.findById(id);
+      if (!user) {
+        throw new NotFoundError("user");
+      }
+      return user;
+    });
+  }
+  // Get user by ID with tenant
+  public async getUserByIdWithTenantId(
+    id: string,
+    tenantId: string,
+  ): Promise<User> {
+    return runInTenantContext(tenantId, async () => {
       const user = await userRepository.findById(id);
       if (!user) {
         throw new NotFoundError("user");
@@ -182,7 +207,8 @@ export class UserService {
       currentUserId?: string;
     } = {},
   ): Promise<UserListResponse> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
       const { search, page = 1, limit = 20, currentUserId } = options;
 
       const skip = (page - 1) * limit;
@@ -211,8 +237,11 @@ export class UserService {
     });
   }
 
-  async checkIfUserExists(userId: string): Promise<UserInterface> {
-    return runInTenantContext("default", async () => {
+  async checkIfUserExists(
+    userId: string,
+    tenantId: string,
+  ): Promise<UserInterface> {
+    return runInTenantContext(tenantId, async () => {
       const user = await userRepository.findById(userId);
       if (!user) {
         throw new NotFoundError("user");
@@ -222,7 +251,8 @@ export class UserService {
   }
 
   async checkIfUsersExists(userIds: string[]): Promise<UserInterface[]> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
       if (!userIds || userIds.length === 0) {
         return [];
       }
@@ -244,14 +274,16 @@ export class UserService {
   }
 
   async getUserByEmail(email: string): Promise<UserInterface | null> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
       const user = await userRepository.findByEmail(email);
       return user;
     });
   }
 
   async getUserByUsername(username: string): Promise<UserInterface | null> {
-    return runInTenantContext("default", async () => {
+    const tenantId = await this.getTenantIdForUser();
+    return runInTenantContext(tenantId, async () => {
       const user = await userRepository.findByUsername(username);
       return user;
     });
