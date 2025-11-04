@@ -289,7 +289,7 @@ export const registerDirectMessageHandlers = (
       }
 
       // Edit message (within tenant context)
-      const result = await runInTenantContext(tenantId, async () => {
+      const directMessage = await runInTenantContext(tenantId, async () => {
         return await directMessageService.editMessage({
           directMessageId,
           messageId,
@@ -303,15 +303,34 @@ export const registerDirectMessageHandlers = (
       // Emit to the TENANT-SCOPED direct message room
       const dmRoom = `tenant:${tenantId}:direct_message:${directMessageId}`;
       io.to(dmRoom).emit("message_updated", {
-        message: result.message,
+        message: directMessage.message,
         directMessageId,
       });
+      // Emit to each participant's TENANT-SCOPED room to update their conversation list
+      // 1. Get participant ids from directMessage
+      const participantIds = await runInTenantContext(tenantId, async () => {
+        return await directMessageService.getParticipantIds(directMessageId);
+      });
+
+      participantIds.forEach(
+        (participantId: mongoose.Types.ObjectId | string) => {
+          const participantIdStr =
+            participantId instanceof mongoose.Types.ObjectId
+              ? participantId.toString()
+              : participantId;
+          const participantRoom = `tenant:${tenantId}:user:${participantIdStr}`;
+          io.to(participantRoom).emit("message_updated", {
+            message: directMessage.message,
+            directMessageId,
+          });
+        },
+      );
 
       // Send confirmation to sender
       if (typeof callback === "function") {
         callback({
           success: true,
-          message: result.message,
+          message: directMessage.message,
         });
       }
     } catch (error) {

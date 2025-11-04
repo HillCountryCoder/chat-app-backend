@@ -66,6 +66,18 @@ export class DirectMessageService {
     return directMessage;
   }
 
+  async getParticipantIds(directMessageId: string): Promise<string[]> {
+    const directMessage = await directMessageRepository.findById(
+      directMessageId,
+    );
+
+    if (!directMessage) {
+      throw new NotFoundError("direct message");
+    }
+    
+    return directMessage.participantIds.map((id) => id.toString());
+  }
+
   async getUserDirectMessages(userId: string): Promise<any[]> {
     const directMessages = await directMessageRepository.findAllByUserId(
       userId,
