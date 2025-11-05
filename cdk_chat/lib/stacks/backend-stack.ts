@@ -197,7 +197,7 @@ export class ChatBackendStack extends cdk.Stack {
           JWT_SECRET: "itsasecretansakdbaskjdbaskjdbaskdbaskdbsakdsdaks",
           JWT_EXPIRES_IN: "1d",
           CORS_ORIGIN:
-            "https://chat-app-frontend-one-coral.vercel.app,http://localhost:3000,https://www.whatnextplease.com,https://staging.whatnextplease.com",
+            "https://chat-app-frontend-one-coral.vercel.app,http://localhost:3000,https://www.whatnextplease.com,https://staging.whatnextplease.com,https://api-staging.whatnextplease.com,https://api.whatnextplease.com",
           // Add media environment variables
           MEDIA_BUCKET_NAME: this.mediaBucket.bucketName,
           THUMBNAIL_BUCKET_NAME: this.thumbnailBucket.bucketName,
