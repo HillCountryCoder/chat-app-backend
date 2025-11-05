@@ -279,7 +279,7 @@ export class TenantController {
       const tenant = await TenantService.getTenant(tenantId);
 
       if (!tenant) {
-        res.status(404).json({ error: "Tenant not found" });
+        return res.status(404).json({ error: "Tenant not found" });
       }
 
       res.json({

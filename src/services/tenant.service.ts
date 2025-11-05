@@ -151,12 +151,8 @@ export class TenantService {
   /**
    * Get tenant by ID (without secret)
    */
-  static async getTenant(tenantId: string): Promise<ITenant> {
+  static async getTenant(tenantId: string): Promise<ITenant | null> {
     const tenant = await Tenant.findOne({ tenantId });
-    if (!tenant) {
-      throw new NotFoundError("Tenant not found");
-    }
-
     return tenant;
   }
 
