@@ -30,7 +30,7 @@
     "test:performance": "vitest run src/tests/**/*performance*",
     "test:media": "vitest run src/tests/**/*{attachment,s3,media}*",
     "test:media:watch": "vitest src/tests/**/*{attachment,s3,media}*",
-	"migrate:tenants": "ts-node src/scripts/tenant-migrations.ts",
+	  "migrate:tenants": "ts-node src/scripts/tenant-migrations.ts",
     "migrate:rollback": "ts-node src/scripts/tenant-migrations.ts rollback"
   },
   "keywords": [
