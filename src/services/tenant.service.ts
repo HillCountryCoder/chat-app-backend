@@ -2,7 +2,9 @@
 import crypto from "crypto";
 import { Tenant, ITenant } from "../models/tenant.model";
 import { NotFoundError } from "../common/errors";
+import { createLogger } from "../common/logger";
 
+const logger = createLogger("tenant-service");
 export class TenantService {
   /**
    * Store pending tenant registration (Admin generates credentials)
@@ -71,6 +73,7 @@ export class TenantService {
     // Verify registration token
     if (tenant.registrationToken !== data.registrationToken) {
       console.error("🚨 Invalid registration token for tenant:", data.tenantId);
+      logger.error(`Invalid registration token for tenant: ${data.tenantId}, with token ${data.registrationToken}, and from db ${tenant.registrationToken}`);
       throw new Error("Invalid registration token");
     }
 
@@ -82,6 +85,7 @@ export class TenantService {
     // Verify shared secret matches
     if (tenant.sharedSecret !== data.sharedSecret) {
       console.error("🚨 Shared secret mismatch for tenant:", data.tenantId);
+      logger.error(`Shared secret mismatch for tenant: ${data.tenantId}, with secret ${data.sharedSecret}, and from db ${tenant.sharedSecret}`);
       throw new Error("Invalid shared secret");
     }
 
