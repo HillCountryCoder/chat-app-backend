@@ -4,6 +4,7 @@ import { runInTenantContext, tenantContext } from "../plugins/tenantPlugin";
 import { TenantAuthenticatedRequest } from "../common/types/auth.type";
 import {
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
   UnauthorizedError,
 } from "../common/errors";
@@ -38,7 +39,7 @@ export class TenantController {
 
       // Validate request
       if (!token || !signature) {
-        res.status(400).json({ error: "Missing token or signature" });
+        throw new BadRequestError("Missing token or signature");
       }
 
       // Decode token
@@ -58,19 +59,19 @@ export class TenantController {
         !payload.email ||
         !payload.externalSystem
       ) {
-        res.status(400).json({ error: "Invalid token payload" });
+        throw new BadRequestError("Invalid token payload");
       }
 
       // Check expiry
       const now = Math.floor(Date.now() / 1000);
       if (payload.exp && payload.exp < now) {
-        res.status(401).json({ error: "Token expired" });
+        throw new UnauthorizedError("Token has expired");
       }
 
       // Get tenant
       const tenant = await TenantService.getTenantWithSecret(payload.tenantId);
       if (!tenant || !tenant.isActive || tenant.status !== "verified") {
-        res.status(403).json({ error: "Tenant not active" });
+        throw new ForbiddenError("Tenant not active or verified");
       }
 
       // Verify signature
@@ -80,7 +81,7 @@ export class TenantController {
         .digest("hex");
 
       if (signature !== expectedSignature) {
-        res.status(401).json({ error: "Invalid signature" });
+        throw new UnauthorizedError("Invalid token signature");
       }
 
       // Verify origin
@@ -89,7 +90,7 @@ export class TenantController {
         !origin ||
         !tenant.allowedOrigins.some((allowed) => origin.startsWith(allowed))
       ) {
-        res.status(403).json({ error: "Origin not allowed" });
+        throw new ForbiddenError("Origin not allowed");
       }
 
       // Find or create user
