@@ -86,6 +86,16 @@ export class TenantController {
 
       // Verify origin
       const origin = req.headers.origin || req.headers.referer;
+      logger.debug("DEBUG Origin Check:", {
+        requestOrigin: req.headers.origin,
+        requestReferer: req.headers.referer,
+        selectedOrigin: origin,
+        tenantAllowedOrigins: tenant.allowedOrigins,
+        startsWithResults: tenant.allowedOrigins.map((allowed) => ({
+          allowed,
+          result: origin?.startsWith(allowed),
+        })),
+      });
       if (
         !origin ||
         !tenant.allowedOrigins.some((allowed) => origin.startsWith(allowed))
