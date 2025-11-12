@@ -23,6 +23,14 @@ const errorHandler = new ErrorHandler(logger);
 let socketServerInstance: Server;
 
 export const initializeSocketServer = (server: HttpServer) => {
+  const corsOrigins = env.CORS_ORIGIN
+    ? env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
+    : [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5001",
+        "http://localhost:5000",
+      ];
   const io = new Server(server, {
     cors: {
       origin: env.CORS_ORIGIN
@@ -33,18 +41,20 @@ export const initializeSocketServer = (server: HttpServer) => {
     path: process.env.SOCKET_PATH || "/socket.io",
     allowRequest: (req, callback) => {
       const origin = req.headers.origin;
-      const allowedOrigins = [
-        "https://chat-app-frontend-one-coral.vercel.app",
-        "http://localhost:3000",
-        "https://www.whatnextplease.com",
-        "https://staging.whatnextplease.com",
-      ];
+
       if (!origin) {
         return callback(null, true);
       }
-      if (allowedOrigins.includes(origin)) {
+
+      // Check if origin is allowed
+      const isAllowed = corsOrigins.some(
+        (allowed) => origin === allowed || origin.startsWith(allowed)
+      );
+
+      if (isAllowed) {
         callback(null, true);
       } else {
+        logger.warn(`Socket.IO CORS blocked: ${origin}`);
         callback("Not allowed by CORS", false);
       }
     },
@@ -68,7 +78,7 @@ export const initializeSocketServer = (server: HttpServer) => {
   } catch (error) {
     if (error instanceof Error) {
       logger.warn(
-        "PresenceManager not available - presence features will be disabled",
+        "PresenceManager not available - presence features will be disabled"
       );
     }
   }
@@ -110,7 +120,7 @@ export const initializeSocketServer = (server: HttpServer) => {
         try {
           await runInTenantContext(tenantId, async () => {
             const unreadCounts = await unreadMessagesService.getAllUnreadCounts(
-              userId,
+              userId
             );
             socket.emit("unread_counts_update", unreadCounts);
           });

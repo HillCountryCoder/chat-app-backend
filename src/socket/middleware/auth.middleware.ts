@@ -54,7 +54,7 @@ export const socketAuthMiddleware = async (
 
       // Send tokens to client
       socket.emit("authenticated", {
-        sucess: true,
+        success: true,
         accessToken,
         refreshToken,
         user: {

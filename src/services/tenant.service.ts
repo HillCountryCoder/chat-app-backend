@@ -20,7 +20,7 @@ export class TenantService {
     // Validate tenantId format
     if (!/^[a-z0-9-_]+$/.test(data.tenantId)) {
       throw new Error(
-        "Invalid tenantId format. Use lowercase alphanumeric, dashes, or underscores.",
+        "Invalid tenantId format. Use lowercase alphanumeric, dashes, or underscores."
       );
     }
 
@@ -58,8 +58,9 @@ export class TenantService {
     registrationToken: string;
   }): Promise<ITenant> {
     // Find pending tenant
+    logger.debug("Tenant Info", { data });
     const tenant = await Tenant.findOne({ tenantId: data.tenantId }).select(
-      "+sharedSecret +registrationToken +registrationExpiry",
+      "+sharedSecret +registrationToken +registrationExpiry"
     );
 
     if (!tenant) {
@@ -73,7 +74,9 @@ export class TenantService {
     // Verify registration token
     if (tenant.registrationToken !== data.registrationToken) {
       console.error("🚨 Invalid registration token for tenant:", data.tenantId);
-      logger.error(`Invalid registration token for tenant: ${data.tenantId}, with token ${data.registrationToken}, and from db ${tenant.registrationToken}`);
+      logger.error(
+        `Invalid registration token for tenant: ${data.tenantId}, with token ${data.registrationToken}, and from db ${tenant.registrationToken}`
+      );
       throw new Error("Invalid registration token");
     }
 
@@ -85,7 +88,9 @@ export class TenantService {
     // Verify shared secret matches
     if (tenant.sharedSecret !== data.sharedSecret) {
       console.error("🚨 Shared secret mismatch for tenant:", data.tenantId);
-      logger.error(`Shared secret mismatch for tenant: ${data.tenantId}, with secret ${data.sharedSecret}, and from db ${tenant.sharedSecret}`);
+      logger.error(
+        `Shared secret mismatch for tenant: ${data.tenantId}, with secret ${data.sharedSecret}, and from db ${tenant.sharedSecret}`
+      );
       throw new Error("Invalid shared secret");
     }
 
@@ -111,7 +116,7 @@ export class TenantService {
    */
   static async verifyTenant(
     tenantId: string,
-    verificationCode: string,
+    verificationCode: string
   ): Promise<ITenant> {
     const tenant = await Tenant.findOne({ tenantId });
 
@@ -172,7 +177,7 @@ export class TenantService {
    */
   static async updateTenant(
     tenantId: string,
-    updates: Partial<Pick<ITenant, "name" | "allowedOrigins" | "settings">>,
+    updates: Partial<Pick<ITenant, "name" | "allowedOrigins" | "settings">>
   ): Promise<ITenant> {
     const tenant = await Tenant.findOne({ tenantId });
 
@@ -197,7 +202,7 @@ export class TenantService {
    */
   static async setTenantStatus(
     tenantId: string,
-    status: "verified" | "suspended",
+    status: "verified" | "suspended"
   ): Promise<ITenant> {
     const tenant = await Tenant.findOne({ tenantId });
 
@@ -226,7 +231,7 @@ export class TenantService {
    */
   static async validateOrigin(
     tenantId: string,
-    origin: string,
+    origin: string
   ): Promise<boolean> {
     const tenant = await this.getTenant(tenantId);
 

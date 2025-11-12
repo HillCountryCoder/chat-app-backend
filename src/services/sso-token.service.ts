@@ -53,9 +53,11 @@ export class SSOTokenService {
       if (payload && payload.exp < now) {
         throw new UnauthorizedError("Token has expired");
       }
+      logger.debug("Payload info", { payload });
 
       // Get tenant
       const tenant = await TenantService.getTenantWithSecret(payload.tenantId);
+      logger.debug("Tenant info", { tenant });
       if (!tenant || !tenant.isActive || tenant.status !== "verified") {
         throw new ForbiddenError("Tenant is not active or verified");
       }
