@@ -150,7 +150,6 @@ const attachmentSchema = new Schema<AttachmentInterface>(
 attachmentSchema.index({ uploadedBy: 1 });
 attachmentSchema.index({ status: 1 });
 attachmentSchema.index({ type: 1 });
-attachmentSchema.index({ "metadata.s3.key": 1 }, { unique: true });
 attachmentSchema.index({ "metadata.s3.encrypted": 1 });
 attachmentSchema.index({ uploadedAt: -1 });
 // New Indexes for multi-tenancy

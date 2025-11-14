@@ -43,7 +43,6 @@ const threadSchema = new Schema<Thread>(
 
 // Indexes for faster lookups
 threadSchema.index({ channelId: 1 });
-threadSchema.index({ parentMessageId: 1 }, { unique: true });
 threadSchema.index({ participantIds: 1 });
 threadSchema.index({ lastActivity: -1 });
 
@@ -63,6 +62,10 @@ threadSchema.index(
 threadSchema.index(
   { tenantId: 1, lastActivity: -1 },
   { name: "tenant_lastActivity_idx" },
+);
+threadSchema.index(
+  { tenantId: 1, parentMessageId: 1 },
+  { unique: true, name: "tenant_parentMessage_unique_idx" },
 );
 
 // Plugin to enforce tenant isolation if needed in future

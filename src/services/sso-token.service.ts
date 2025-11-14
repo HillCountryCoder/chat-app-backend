@@ -31,7 +31,7 @@ export class SSOTokenService {
    */
   static async validateToken(
     token: string,
-    signature: string
+    signature: string,
   ): Promise<TenantTokenPayload> {
     try {
       // Decode token
@@ -100,10 +100,9 @@ export class SSOTokenService {
           externalId: payload.tenantUserId,
           externalSystem: payload.externalSystem,
           email: payload.email,
-          username:
-            payload.email.split("@")[0] +
-            "_" +
-            payload.tenantUserId.slice(0, 6),
+          username: `${payload.email.split("@")[0]}_${
+            payload.tenantId
+          }_${payload.tenantUserId.slice(0, 6)}`,
           displayName: payload.name,
           avatarUrl: payload.avatarUrl,
           isActive: true,

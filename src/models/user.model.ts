@@ -127,8 +127,6 @@ const userSchema = new Schema<UserInterface>(
   },
 );
 
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ username: 1 }, { unique: true });
 // Add new tenant-scoped indexes (will be primary after migration)
 userSchema.index(
   { tenantId: 1, email: 1 },

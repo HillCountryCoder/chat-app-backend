@@ -67,7 +67,6 @@ const channelSchema = new Schema<ChannelInterface>(
 // Index for faster lookups
 channelSchema.index({ creatorId: 1 });
 channelSchema.index({ isArchived: 1 });
-channelSchema.index({ name: 1 }, { unique: true });
 // New Indexes for multi-tenancy
 channelSchema.index(
   { tenantId: 1, name: 1 },

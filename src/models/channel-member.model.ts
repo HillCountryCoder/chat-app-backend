@@ -78,7 +78,6 @@ channelMemberSchema.pre(["find", "findOne", "findOneAndUpdate"], function () {
 });
 
 // Compound index to ensure a user can only be a member of a channel once
-channelMemberSchema.index({ channelId: 1, userId: 1 }, { unique: true });
 // Indexes for faster lookups
 channelMemberSchema.index({ channelId: 1 });
 channelMemberSchema.index({ userId: 1 });
