@@ -63,7 +63,7 @@ const userSchema = new Schema<UserInterface>(
       required: true,
       trim: true,
       minLength: 3,
-      maxLength: 30,
+      maxLength: 50,
     },
     passwordHash: {
       type: String,
