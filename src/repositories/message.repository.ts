@@ -25,6 +25,7 @@ export class MessageRepository extends BaseRepository<
       limit?: number;
       before?: string;
       after?: string;
+      visibleAfter?: Date;
     },
   ): Promise<(typeof Message.prototype)[]> {
     const query: any = {
@@ -37,6 +38,10 @@ export class MessageRepository extends BaseRepository<
 
     if (options?.after) {
       query.createdAt = { ...query.createdAt, $gt: new Date(options.after) };
+    }
+
+    if (options?.visibleAfter) {
+      query.createdAt = { ...query.createdAt, $gt: options.visibleAfter };
     }
 
     let findQuery = this.model.find(query).sort({ createdAt: -1 });

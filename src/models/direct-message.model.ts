@@ -5,6 +5,8 @@ export interface DirectMessageInterface extends Document {
   _id: mongoose.Types.ObjectId;
   tenantId: string;
   participantIds: mongoose.Types.ObjectId[];
+  deletedBy: mongoose.Types.ObjectId[];
+  deletedAt: Map<string, Date>;
   createdAt: Date;
   lastActivity: Date;
 }
@@ -22,6 +24,18 @@ const directMessageSchema = new Schema<DirectMessageInterface>(
         required: true,
       },
     ],
+    deletedBy: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        default: [],
+      },
+    ],
+    deletedAt: {
+      type: Map,
+      of: Date,
+      default: {},
+    },
     createdAt: { type: Date, default: Date.now },
     lastActivity: { type: Date, default: Date.now },
   },
@@ -32,6 +46,7 @@ const directMessageSchema = new Schema<DirectMessageInterface>(
 
 directMessageSchema.index({ participantIds: 1 });
 directMessageSchema.index({ lastActivity: -1 }); // arragne in descending order
+directMessageSchema.index({ deletedBy: 1 }, { sparse: true });
 
 directMessageSchema.pre("save", function (next) {
   if (this.isModified("participantIds")) {

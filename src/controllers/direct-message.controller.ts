@@ -318,6 +318,27 @@ export class DirectMessageController {
     }
   }
 
+  static async deleteConversation(
+    req: TenantAuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { id } = req.params;
+
+      if (!req.user) {
+        throw new UnauthorizedError("User not authenticated");
+      }
+      const userId = req.user._id.toString();
+
+      await directMessageService.deleteConversation(id, userId);
+
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // New endpoint to get rich content statistics
   static async getRichContentStats(
     req: TenantAuthenticatedRequest,

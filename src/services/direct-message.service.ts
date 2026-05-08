@@ -116,12 +116,16 @@ export class DirectMessageService {
     },
   ) {
     // Verify user has access to this direct message
-    await this.getDirectMessageById(directMessageId, userId);
+    const dm = await this.getDirectMessageById(directMessageId, userId);
+    const visibleAfter = dm.deletedAt?.get(userId);
 
     // Get messages with populated attachments
     const messages = await messageRepository.findByDirectMessageId(
       directMessageId,
-      options,
+      {
+        ...options,
+        visibleAfter,
+      },
     );
 
     // Populate attachments for messages that have them
@@ -214,6 +218,11 @@ export class DirectMessageService {
       // Verify the direct message exists and the sender is a participant
       logger.debug("Direct message verified", { dmId, senderId, tenantId });
       const directMessage = await this.getDirectMessageById(dmId, senderId);
+      const deletedByIds =
+        directMessage.deletedBy
+          ?.filter((id) => id.toString() !== senderId)
+          .map((id) => id.toString()) ?? [];
+
       // Create the message with attachments and rich content
       const message = await messageService.createMessageWithAttachments({
         senderId,
@@ -229,6 +238,10 @@ export class DirectMessageService {
       await directMessageRepository.update(dmId, {
         lastActivity: new Date(),
       });
+
+      if (deletedByIds.length > 0) {
+        await directMessageRepository.restoreForParticipants(dmId, deletedByIds);
+      }
 
       // Increment unread count for all participants except the sender
       await unreadMessagesService.incrementUnreadCount(
@@ -257,6 +270,16 @@ export class DirectMessageService {
         directMessage,
       };
     }
+  }
+
+  async deleteConversation(dmId: string, userId: string): Promise<void> {
+    await this.getDirectMessageById(dmId, userId);
+    await directMessageRepository.deleteForUser(dmId, userId);
+
+    logger.info("Direct message conversation deleted for user", {
+      dmId,
+      userId,
+    });
   }
 
   // Phase 3 validation method

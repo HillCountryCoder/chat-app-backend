@@ -140,7 +140,9 @@ userSchema.index(
   { tenantId: 1, externalId: 1, externalSystem: 1 },
   {
     unique: true,
-    sparse: true,
+    partialFilterExpression: {
+      externalId: { $exists: true, $ne: null },
+    },
     name: "tenant_external_id_unique",
   },
 );

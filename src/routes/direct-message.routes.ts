@@ -17,6 +17,9 @@ router.get("/unread-counts", DirectMessageController.getUnreadCounts);
 // Get a specific direct message
 router.get("/:id", DirectMessageController.getDirectMessageById);
 
+// Delete direct message conversation for current user
+router.delete("/:id", DirectMessageController.deleteConversation);
+
 // Get messages in a direct message conversation
 router.get("/:id/messages", DirectMessageController.getMessages);
 
